@@ -1,0 +1,146 @@
+{
+  "dataset_name": "portable_futures_demo",
+  "description": "Offline futures and roll-calendar cache for realized variance forecasting demo",
+  "total_files": 9,
+  "total_raw_payload_bytes": 332540,
+  "tables": [
+    {
+      "asset": "ES",
+      "table": "futures",
+      "file": "data/raw/futures/ES.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 1042,
+      "columns": [
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "file_size_bytes": 35158
+    },
+    {
+      "asset": "CL",
+      "table": "futures",
+      "file": "data/raw/futures/CL.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 4559,
+      "columns": [
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "file_size_bytes": 80173
+    },
+    {
+      "asset": "GC",
+      "table": "futures",
+      "file": "data/raw/futures/GC.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 2750,
+      "columns": [
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "file_size_bytes": 70576
+    },
+    {
+      "asset": "ES",
+      "table": "roll_calendars",
+      "variant": "sample",
+      "file": "data/raw/roll_calendars/ES_sample.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 313,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 4460
+    },
+    {
+      "asset": "CL",
+      "table": "roll_calendars",
+      "variant": "sample",
+      "file": "data/raw/roll_calendars/CL_sample.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 313,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 4508
+    },
+    {
+      "asset": "GC",
+      "table": "roll_calendars",
+      "variant": "sample",
+      "file": "data/raw/roll_calendars/GC_sample.parquet",
+      "start_date": "2024-01-02",
+      "end_date": "2024-12-31",
+      "row_count": 313,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 4464
+    },
+    {
+      "asset": "ES",
+      "table": "roll_calendars",
+      "variant": "full",
+      "file": "data/raw/roll_calendars/ES_full.parquet",
+      "start_date": "2010-01-04",
+      "end_date": "2024-12-31",
+      "row_count": 4694,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 44163
+    },
+    {
+      "asset": "CL",
+      "table": "roll_calendars",
+      "variant": "full",
+      "file": "data/raw/roll_calendars/CL_full.parquet",
+      "start_date": "2010-01-04",
+      "end_date": "2024-12-31",
+      "row_count": 4694,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 44828
+    },
+    {
+      "asset": "GC",
+      "table": "roll_calendars",
+      "variant": "full",
+      "file": "data/raw/roll_calendars/GC_full.parquet",
+      "start_date": "2010-01-04",
+      "end_date": "2024-12-31",
+      "row_count": 4694,
+      "columns": [
+        "date",
+        "contract"
+      ],
+      "file_size_bytes": 44210
+    }
+  ]
+}

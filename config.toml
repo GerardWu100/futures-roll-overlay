@@ -1,0 +1,67 @@
+[raw_data]
+# Directory containing futures raw Parquet files, one file per asset root.
+futures_dir = "data/raw/futures"
+# Directory containing roll-calendar Parquet files.
+roll_calendars_dir = "data/raw/roll_calendars"
+# Machine-readable manifest describing the offline raw payload.
+manifest_path = "data/raw/manifest/dataset_manifest.json"
+# Default roll-calendar variant used by loaders when no variant is passed.
+# roll_calendar_default_variant = "sample"
+# roll_calendar_default_variant = "full"
+roll_calendar_default_variant = "sample"
+
+[research]
+# Futures roots included in the offline demo pipeline.
+assets = ["ES", "CL", "GC"]
+# Inclusive start date for the default offline demo sample.
+start_date = "2024-01-02"
+# Inclusive end date for the default offline demo sample.
+end_date = "2024-12-31"
+# Roll method used when constructing continuous futures.
+# roll_method = "calendar"
+# roll_method = "volume"
+roll_method = "calendar"
+# Price-adjustment method used at roll boundaries.
+# roll_adjustment = "ratio"
+# roll_adjustment = "panama"
+roll_adjustment = "ratio"
+# Roll-calendar variant for continuous-series construction.
+# roll_calendar_build_variant = "sample"
+# roll_calendar_build_variant = "full"
+roll_calendar_build_variant = "sample"
+# Roll-calendar variant used for contract timing denominators in term structure.
+# roll_calendar_timing_variant = "sample"
+# roll_calendar_timing_variant = "full"
+roll_calendar_timing_variant = "full"
+# Number of nearest contracts to retain for slope estimation.
+num_contracts = 3
+# Regime switch persistence threshold in consecutive observations.
+regime_persistence_days = 1
+# Absolute annualized roll-yield threshold below which regime is flat.
+flat_threshold = 0.005
+# Forward realized-variance horizon in trading days.
+target_horizon_days = 2
+# Annualization factor for daily realized-variance targets.
+annualization_factor = 252
+# Number of lagged daily realized-variance features.
+lag_days = 1
+
+[models]
+# Ridge regression L2 penalty coefficient.
+ridge_alpha = 1.0
+
+[evaluation]
+# Initial train-window length in rows for walk-forward splits.
+train_size = 80
+# Out-of-sample test-window length in rows for each fold.
+test_size = 20
+# Number of rows to move training endpoint each fold.
+step_size = 20
+# Minimum per-asset row count required to include an asset in pooled modeling.
+min_asset_rows = 120
+# Rows per asset to keep in notebook demo helper outputs.
+notebook_max_rows_per_asset = 80
+
+[raw_refresh]
+# Relative path to ClickHouse credential file for optional refresh command.
+clickhouse_env = ".env"

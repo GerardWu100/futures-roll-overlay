@@ -1,0 +1,1 @@
+12. **Futures Roll + Options Risk Overlay** — “Model continuous futures roll/term structure and add an options-implied risk overlay (e.g., vol targeting) to stabilize drawdowns.” citeturn8search6turn3search22turn2search1
