@@ -19,10 +19,10 @@ This structure is deliberate: each layer answers one clear question about the wo
 - `futures_roll_overlay/features/term_structure.py`: `compute_term_structure_features(...)`.
 - `futures_roll_overlay/features/realized_variance.py`: `build_forward_realized_variance(...)`.
 - `futures_roll_overlay/features/dataset.py`: `build_asset_dataset(...)` and `build_pooled_dataset(...)`.
-- `futures_roll_overlay/models/baselines.py`: persistence and rolling-mean baselines.
+- `futures_roll_overlay/models/baselines.py`: observable trailing-variance persistence baseline.
 - `futures_roll_overlay/models/train.py`: ridge regression fit and coefficient outputs.
 - `futures_roll_overlay/evaluation/metrics.py`: `compute_regression_metrics(...)`.
-- `futures_roll_overlay/evaluation/walk_forward.py`: fold generation and walk-forward ridge execution.
+- `futures_roll_overlay/evaluation/walk_forward.py`: horizon-purged fold generation and walk-forward ridge execution.
 - `futures_roll_overlay/pipeline/run_research_pipeline.py`: CLI + programmatic entrypoint for full offline run.
 
 Console entrypoints (see `pyproject.toml`): `futures-roll-research`, `futures-roll-refresh-raw`.
@@ -31,5 +31,6 @@ Console entrypoints (see `pyproject.toml`): `futures-roll-research`, `futures-ro
 
 - 2026-04-19: Replaced old overlay/backtest stack with a focused realized-variance forecasting architecture.
 - 2026-04-19: Added per-asset walk-forward evaluation path to keep index semantics clean and interpretation simple.
+- 2026-07-13: Defined the forecast clock explicitly: targets use leads 1 through $H$, persistence uses trailing known variance, and training ends at $T-H$ for test origin $T$.
 - 2026-04-19: Added notebook-specific subset artifact outputs so educational notebook flow stays lightweight without duplicating production logic.
 - 2026-05-20: Moved importable code under `futures_roll_overlay/` per standard `src/package_name` layout; exposed CLI via `[project.scripts]`.

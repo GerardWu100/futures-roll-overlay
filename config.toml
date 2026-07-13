@@ -51,7 +51,7 @@ lag_days = 1
 ridge_alpha = 1.0
 
 [evaluation]
-# Initial train-window length in rows for walk-forward splits.
+# First test-row position; the target horizon purges overlapping training labels.
 train_size = 80
 # Out-of-sample test-window length in rows for each fold.
 test_size = 20

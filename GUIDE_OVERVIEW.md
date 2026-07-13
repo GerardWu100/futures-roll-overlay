@@ -42,8 +42,8 @@ futures-roll-overlay/
 2. **Continuous series:** build front-contract continuous futures with explicit roll and adjustment configuration.
 3. **Target construction:** compute daily log returns, daily realized variance, and forward annualized realized variance target.
 4. **Feature engineering:** build term-structure features plus lagged variance and lagged return covariates.
-5. **Modeling:** compare persistence baseline with ridge regression.
-6. **Evaluation:** run per-asset walk-forward folds and aggregate pooled plus per-asset metrics.
+5. **Modeling:** compare observable trailing-variance persistence with ridge regression.
+6. **Evaluation:** purge training labels that overlap the forecast horizon, run per-asset walk-forward folds, and aggregate pooled plus per-asset metrics.
 7. **Outputs:** write compact artifacts under `outputs/runs/<run_id>/` including notebook subset files.
 
 ## Domain Logic
@@ -68,10 +68,17 @@ $$
 
 Term-structure features include front-second spread, annualized roll yield, and normalized slope.
 
+At a test origin $T$, a training label dated $s$ is usable only when
+$s+H\leq T$. The last training row is therefore $T-H$, leaving a purge of
+$H-1$ rows relative to an ordinary adjacent train/test split. Persistence uses
+the trailing $H$-session annualized variance known at $T$, not a shifted future
+label.
+
 ## Assumptions And Limits
 
 - Default runtime is offline-only from `data/raw`.
 - ClickHouse refresh is optional and isolated to `futures-roll-refresh-raw`.
 - Model family is intentionally small (baseline + ridge) for explainability.
-- Evaluation uses ordered walk-forward folds per asset to avoid temporal leakage.
+- Evaluation uses horizon-purged walk-forward folds per asset to prevent
+  training-label overlap with each test period.
 - Notebook subset files are compact by design and may not include every full-run row.

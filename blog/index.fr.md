@@ -12,7 +12,7 @@ La question de départ semblait raisonnable : la forme de la courbe des futures 
 
 J'ai ensuite suivi la cible ligne par ligne.
 
-Cet audit a révélé trois problèmes de calendrier. La cible de variance future était décalée d'une séance, le benchmark de persistance utilisait une cible avant qu'elle ne soit observable, et la dernière cible d'entraînement de chaque fold débordait sur la période de test. Les corrections sont simples. Leur effet cumulé change pourtant la nature de l'expérience.
+Cet audit a révélé trois problèmes de calendrier. La cible de variance future était décalée d'une séance, le benchmark de persistance utilisait une cible avant qu'elle ne soit observable, et la dernière cible d'entraînement de chaque fold débordait sur la période de test. J'ai corrigé les trois dans le pipeline de production et ajouté de petits tests, calculés à la main, pour verrouiller l'horloge de prévision.
 
 J'ai conservé le reste du pipeline et relancé la comparaison hors échantillon depuis les contrats bruts. Le résultat négatif est justement ce qui mérite d'être retenu : une fois le calendrier réparé, aucun des deux modèles n'explique la variance future de façon fiable.
 
@@ -56,7 +56,7 @@ $$
 
 L'indice est décisif : le premier rendement au carré doit être $r_{t+1}^2$, et non $r_t^2$.
 
-Le code de production tente d'avancer la série avant d'appliquer une somme glissante :
+L'implémentation initiale avançait la série avant d'appliquer une somme glissante :
 
 ```python
 forward_sum = (
@@ -68,14 +68,14 @@ forward_sum = (
 
 Or, une fenêtre glissante pandas regarde vers le passé. Avec $H=2$, la valeur attachée à la date $t$ devient $r_t^2+r_{t+1}^2$. Sur une petite série $[a,b,c,d]$ de rendements au carré, `shift(-1)` produit $[b,c,d,NaN]$, puis la fenêtre de deux lignes donne $[NaN,b+c,c+d,NaN]$. La cible de la deuxième ligne contient donc le rendement de cette même ligne.
 
-L'audit construit chaque avance explicitement :
+La cible de production construit maintenant chaque avance explicitement :
 
 ```python
-future_terms = [
+future_squared_returns = [
     squared_returns.shift(-lead)
     for lead in range(1, horizon_days + 1)
 ]
-forward_variance = pd.concat(future_terms, axis=1).sum(
+forward_sum = pd.concat(future_squared_returns, axis=1).sum(
     axis=1,
     min_count=horizon_days,
 )
@@ -87,11 +87,12 @@ La ligne datée $t$ contient désormais exactement $r_{t+1}^2+r_{t+2}^2$.
 
 Des cibles correctes ne suffisent pas : il faut aussi respecter leur date de **disponibilité**. Une cible à deux séances attachée à la date $s$ n'est entièrement connue qu'après la clôture de $s+2$. Si un fold de test commence à la date $T$, une cible d'entraînement n'est observable à cet instant que si $s+H\leq T$, soit $s\leq T-H$.
 
-Un split walk-forward ordinaire termine l'entraînement à $T-1$. Avec $H=2$, sa dernière cible utilise les rendements de $T$ et $T+1$; le second n'existe pas encore au moment de prévoir à $T$. L'audit retire donc $H-1=1$ ligne à la fin de chaque fold d'entraînement. Cette **purge** crée l'écart nécessaire pour empêcher les cibles d'apprentissage d'employer une information indisponible à l'origine de la prévision.
+Un split walk-forward ordinaire termine l'entraînement à $T-1$. Avec $H=2$, sa dernière cible utilise les rendements de $T$ et $T+1$; le second n'existe pas encore au moment de prévoir à $T$. L'évaluateur termine désormais l'entraînement à $T-H$. Il omet ainsi $H-1=1$ ligne nominale entre l'échantillon ajusté et le bloc de test. Cette omission est une **purge** : elle empêche les cibles d'apprentissage d'employer une information indisponible à l'origine de la prévision.
 
 ```python
-purged_train_end = split.train_end - (horizon_days - 1)
-train = ordered.iloc[split.train_start : purged_train_end + 1]
+train_end = test_start - label_horizon_days
+train = ordered.iloc[train_start : train_end + 1]
+test = ordered.iloc[test_start : test_end + 1]
 ```
 
 Le benchmark de persistance initial souffre du même défaut. Décaler une cible future d'une ligne ne la rend pas observable. Pour obtenir un benchmark réalisable, définissons la variance passée connue $K_t$ à partir du rendement courant et des $H-1$ rendements précédents :
@@ -100,7 +101,7 @@ $$
 K_t=\frac{A}{H}\sum_{i=0}^{H-1}r_{t-i}^{2}.
 $$
 
-Après la clôture de $t$, tous les termes de $K_t$ sont connus. La prévision de persistance corrigée utilise simplement $K_t$ comme estimation de $RV^{ann}_{t,t+H}$.
+Après la clôture de $t$, tous les termes de $K_t$ sont connus. La prévision de persistance corrigée utilise $K_t$ comme estimation de $RV^{ann}_{t,t+H}$. Les variables de ridge restent décalées d'une séance : cette fenêtre courante alimente le benchmark, pas ridge de façon cachée.
 
 La régression ridge travaille sur des variables standardisées. Notons $n$ le nombre d'observations d'entraînement, $y_i$ la cible de variance future de l'observation $i$, $\mathbf{x}_i$ son vecteur de variables standardisées, $b$ la constante non pénalisée, $\boldsymbol{\beta}$ le vecteur de coefficients, et $\lambda$ l'intensité de la pénalisation. Les paramètres minimisent
 
@@ -113,11 +114,11 @@ Ici, $\lambda=1$. La moyenne et l'écart-type de chaque variable sont estimés s
 
 ## Ce qui reste après la correction
 
-L'analyse auditée utilise les données locales de 2024, le roll calendaire, l'ajustement par ratio, une fenêtre d'entraînement initiale de 80 observations, des blocs de test de 20 observations et un pas de 20. Chaque actif fournit 11 folds de test et 220 prévisions hors échantillon par modèle. Le graphique présente la moyenne du root mean squared error (RMSE), ou racine de l'erreur quadratique moyenne, sur ces folds. Le RMSE est exprimé en unités décimales de variance annualisée, pas en points de volatilité.
+L'analyse corrigée en production utilise les données locales de 2024, le roll calendaire, l'ajustement par ratio, une frontière initiale nominale de 80 observations, des blocs de test de 20 observations et un pas de 20. Comme $H=2$, le premier échantillon ajusté de ridge contient 79 labels observables; la ligne qui précède immédiatement le bloc de test est purgée. Chaque actif fournit 11 folds de test et 220 prévisions hors échantillon par modèle. Le graphique présente la moyenne du root mean squared error (RMSE), ou racine de l'erreur quadratique moyenne, sur ces folds. Le RMSE est exprimé en unités décimales de variance annualisée, pas en points de volatilité.
 
 ![RMSE moyen par racine de future et par modèle](images/01_asset_rmse.png)
 
-Aucun modèle ne gagne partout. La persistance domine nettement sur ES, tandis que ridge obtient un RMSE inférieur sur CL et GC. Moyenné sur toutes les combinaisons actif-fold, le RMSE de ridge atteint $0,0453$, contre $0,0481$ pour la persistance. Cet avantage étroit ne se retrouve donc pas sur tous les marchés.
+Aucun modèle ne gagne partout. La persistance domine nettement sur ES, tandis que ridge obtient un RMSE inférieur sur CL et GC. Moyenné sur toutes les combinaisons actif-fold, le RMSE de ridge atteint $0.0453$, contre $0.0481$ pour la persistance. Cet avantage étroit ne se retrouve donc pas sur tous les marchés.
 
 | Actif | RMSE persistance | RMSE ridge | $R^2$ moyen persistance | $R^2$ moyen ridge |
 |---|---:|---:|---:|---:|
@@ -145,4 +146,11 @@ L'expérience reste instructive. Une étude sur futures doit gérer deux horloge
 
 Les limites plus classiques demeurent. L'échantillon ne couvre qu'une année civile et trois marchés. Une cible à deux séances est très bruitée. La règle de roll et la méthode d'ajustement restent fixes. Ridge est un modèle linéaire non contraint, alors que la variance réalisée est positive et fortement asymétrique à droite. Une prochaine expérience plus solide prévoirait le logarithme de la variance, ajouterait un benchmark de variance exponentiellement pondérée, réglerait la pénalisation à l'intérieur de chaque fold d'entraînement et répéterait l'analyse sur plusieurs années et plusieurs horizons.
 
-La première amélioration est pourtant plus petite : écrire un test unitaire avec quelques rendements calculés à la main, vérifier chaque date de cible, puis contrôler la disponibilité des labels à chaque frontière de fold. En recherche temporelle, quatre lignes bien tracées protègent souvent mieux le capital qu'un modèle supplémentaire.
+Les tests de production calculent maintenant une cible de quatre lignes à la main et contrôlent la frontière des labels pour chaque fold généré. Le choix est volontairement simple. En recherche temporelle, un petit test d'horloge protège souvent mieux le capital qu'un modèle supplémentaire.
+
+## Références
+
+- Andersen, T. G., Bollerslev, T., Diebold, F. X., and Labys, P. (2003), [“Modeling and Forecasting Realized Volatility”](https://doi.org/10.1111/1468-0262.00418), *Econometrica*, 71(2), 579–625.
+- Hoerl, A. E., and Kennard, R. W. (1970), [“Ridge Regression: Biased Estimation for Nonorthogonal Problems”](https://doi.org/10.1080/00401706.1970.10488634), *Technometrics*, 12(1), 55–67.
+- pandas development team, [`Series.rolling` API reference](https://pandas.pydata.org/docs/reference/api/pandas.Series.rolling.html), pour la sémantique des fenêtres rétrospectives à l'origine du défaut d'alignement.
+- López de Prado, M. (2018), *Advances in Financial Machine Learning*, Wiley, Chapter 7, sur la purge des observations dont les labels chevauchent l'intervalle de test.

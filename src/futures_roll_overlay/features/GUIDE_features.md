@@ -3,7 +3,7 @@
 This folder constructs model inputs and realized-variance targets.
 
 - `term_structure.py`: spread, roll yield, slope, and regime labels.
-- `realized_variance.py`: daily variance and forward annualized realized variance targets.
+- `realized_variance.py`: daily variance, explicit-lead forward annualized targets, and observable trailing variance for persistence.
 - `dataset.py`: per-asset feature panel assembly, lagged features, and pooled dataset construction.
 
 Interview story for this layer:

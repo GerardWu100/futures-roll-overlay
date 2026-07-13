@@ -5,7 +5,7 @@ This folder wires all layers into a single reproducible workflow.
 - `run_research_pipeline.py`:
   - loads config,
   - builds per-asset datasets,
-  - runs per-asset walk-forward evaluation,
+  - runs per-asset horizon-purged walk-forward evaluation,
   - aggregates pooled and per-asset metrics,
   - writes run artifacts under `outputs/runs/<run_id>/`.
 

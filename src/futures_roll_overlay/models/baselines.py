@@ -5,19 +5,20 @@ from __future__ import annotations
 import pandas as pd
 
 
-def persistence_baseline(target: pd.Series) -> pd.Series:
-    """Predict next value using the previous observed target.
+def trailing_variance_persistence(trailing_variance: pd.Series) -> pd.Series:
+    """Use the latest observable trailing variance as the forward forecast.
 
     Parameters
     ----------
-    target : pd.Series
-        Date-indexed target series.
+    trailing_variance : pd.Series
+        Date-indexed annualized variance over the current and previous
+        ``H - 1`` sessions. Every input is known at the forecast origin.
 
     Returns
     -------
     pd.Series
-        One-step lagged prediction series aligned to the same index.
+        Feasible persistence prediction aligned to the same index.
     """
-    prediction = target.shift(1)
+    prediction = trailing_variance.copy()
     prediction.name = "prediction"
     return prediction

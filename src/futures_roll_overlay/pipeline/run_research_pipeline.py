@@ -36,7 +36,7 @@ from futures_roll_overlay.features.realized_variance import (
     build_forward_realized_variance,
 )
 from futures_roll_overlay.features.term_structure import compute_term_structure_features
-from futures_roll_overlay.models.baselines import persistence_baseline
+from futures_roll_overlay.models.baselines import trailing_variance_persistence
 from futures_roll_overlay.models.train import fit_ridge_regression
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -163,6 +163,7 @@ def _feature_columns(dataset: pd.DataFrame) -> list[str]:
         "forward_realized_variance",
         "forward_realized_variance_annualized",
         "daily_realized_variance",
+        "known_trailing_rv_annualized",
         "index",
     }
     return [column for column in dataset.columns if column not in excluded]
@@ -188,19 +189,46 @@ def _label_walk_forward_outputs(
 def _baseline_walk_forward(
     dataset: pd.DataFrame,
     target_column: str,
+    trailing_variance_column: str,
     train_size: int,
     test_size: int,
     step_size: int,
+    label_horizon_days: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Evaluate persistence baseline over walk-forward folds."""
+    """Evaluate feasible trailing-variance persistence over purged folds.
+
+    Parameters
+    ----------
+    dataset : pd.DataFrame
+        Date-indexed modeling panel for one futures root.
+    target_column : str
+        Forward realized-variance column used as the observed outcome.
+    trailing_variance_column : str
+        Observable trailing-variance column used as the persistence forecast.
+    train_size : int
+        Nominal first test-row position before the horizon purge.
+    test_size : int
+        Number of rows in each out-of-sample block.
+    step_size : int
+        Number of rows between consecutive test-block starts.
+    label_horizon_days : int
+        Forward target horizon ``H`` used to purge unavailable labels.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, pd.DataFrame]
+        Fold-level regression metrics and observation-level predictions.
+    """
     ordered = dataset.sort_index()
-    # Persistence uses the full-sample lagged target, then slices each test fold.
-    full_persistence = persistence_baseline(target=ordered[target_column])
+    full_persistence = trailing_variance_persistence(
+        trailing_variance=ordered[trailing_variance_column]
+    )
     splits = generate_walk_forward_splits(
         date_index=ordered.index,
         train_size=train_size,
         test_size=test_size,
         step_size=step_size,
+        label_horizon_days=label_horizon_days,
     )
     metric_rows: list[dict[str, object]] = []
     prediction_rows: list[pd.DataFrame] = []
@@ -265,6 +293,7 @@ def _align_asset_datasets(asset_datasets: list[pd.DataFrame]) -> list[pd.DataFra
         "asset",
         "target_forward_rv_annualized",
         "forward_realized_variance",
+        "known_trailing_rv_annualized",
     }
     shared_feature_columns = sorted(
         {
@@ -286,6 +315,7 @@ def _align_asset_datasets(asset_datasets: list[pd.DataFrame]) -> list[pd.DataFra
             "date",
             *shared_feature_columns,
             "forward_realized_variance",
+            "known_trailing_rv_annualized",
             "asset",
             "target_forward_rv_annualized",
         ]
@@ -461,6 +491,7 @@ def run_research_pipeline(
     train_size = int(config["evaluation"]["train_size"])
     test_size = int(config["evaluation"]["test_size"])
     step_size = int(config["evaluation"]["step_size"])
+    label_horizon_days = int(config["research"]["target_horizon_days"])
 
     for asset_dataset in eligible_asset_datasets:
         asset_name = str(asset_dataset["asset"].iloc[0])
@@ -470,9 +501,11 @@ def run_research_pipeline(
         baseline_metrics, baseline_predictions = _baseline_walk_forward(
             dataset=ordered_asset_dataset,
             target_column=target_column,
+            trailing_variance_column="known_trailing_rv_annualized",
             train_size=train_size,
             test_size=test_size,
             step_size=step_size,
+            label_horizon_days=label_horizon_days,
         )
         baseline_metrics, baseline_predictions = _label_walk_forward_outputs(
             baseline_metrics,
@@ -488,6 +521,7 @@ def run_research_pipeline(
             train_size=train_size,
             test_size=test_size,
             step_size=step_size,
+            label_horizon_days=label_horizon_days,
             alpha=float(config["models"]["ridge_alpha"]),
         )
         ridge_metrics, ridge_predictions = _label_walk_forward_outputs(

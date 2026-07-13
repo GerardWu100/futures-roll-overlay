@@ -37,24 +37,41 @@ def build_forward_realized_variance(
         - ``log_return``
 
         - ``daily_realized_variance``
+        - ``known_trailing_rv_annualized``
         - ``forward_realized_variance``
         - ``forward_realized_variance_annualized``
     """
     log_returns = log_returns.copy()
     log_returns.index = pd.to_datetime(log_returns.index)
     log_returns.index.name = "date"
+    if horizon_days < 1:
+        raise ValueError("horizon_days must be at least 1.")
+    if annualization_factor < 1:
+        raise ValueError("annualization_factor must be at least 1.")
+
     squared_returns = log_returns.pow(2)
-    # Forward horizon sum excludes the current day by shifting by -1 first.
-    forward_sum = (
-        squared_returns.shift(-1)
-        .rolling(window=horizon_days, min_periods=horizon_days)
-        .sum()
+    # Build the target from explicit leads. A shifted rolling window still
+    # looks backward and would attach r_t^2 + ... + r_{t+H-1}^2 to date t.
+    future_squared_returns = [
+        squared_returns.shift(-lead) for lead in range(1, horizon_days + 1)
+    ]
+    forward_sum = pd.concat(future_squared_returns, axis=1).sum(
+        axis=1,
+        min_count=horizon_days,
     )
+    trailing_sum = squared_returns.rolling(
+        window=horizon_days,
+        min_periods=horizon_days,
+    ).sum()
     annualized_forward_sum = (annualization_factor / horizon_days) * forward_sum
     output = pd.DataFrame(
         {
             "log_return": log_returns,
             "daily_realized_variance": squared_returns,
+            "known_trailing_rv_annualized": (
+                annualization_factor / horizon_days
+            )
+            * trailing_sum,
             "forward_realized_variance": forward_sum,
             "forward_realized_variance_annualized": annualized_forward_sum,
         }

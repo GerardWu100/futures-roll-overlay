@@ -39,14 +39,45 @@ def generate_walk_forward_splits(
     train_size: int,
     test_size: int,
     step_size: int,
+    label_horizon_days: int,
 ) -> list[WalkForwardSplit]:
-    """Generate ordered walk-forward splits from one date index."""
+    """Generate ordered folds whose training labels are observable at test time.
+
+    A label dated ``s`` contains returns through ``s + H``, where ``H`` is
+    ``label_horizon_days``. If the first test row is ``T``, the latest allowed
+    training row is therefore ``T - H``. The omitted ``H - 1`` rows form the
+    horizon purge between the training and test slices.
+
+    Parameters
+    ----------
+    date_index : pd.Index
+        Ordered observation dates or labels used to determine the row count.
+    train_size : int
+        Integer position of the first test row. This is the nominal training
+        boundary before the horizon purge.
+    test_size : int
+        Number of consecutive rows in each test fold.
+    step_size : int
+        Number of rows to advance the first test position between folds.
+    label_horizon_days : int
+        Number of future sessions ``H`` included in each training label.
+
+    Returns
+    -------
+    list[WalkForwardSplit]
+        Ordered inclusive row boundaries. Each ``train_end`` is exactly
+        ``label_horizon_days`` rows before its corresponding ``test_start``.
+    """
+    if min(train_size, test_size, step_size, label_horizon_days) < 1:
+        raise ValueError("Split sizes and label_horizon_days must be at least 1.")
+    if label_horizon_days > train_size:
+        raise ValueError("label_horizon_days cannot exceed train_size.")
     row_count = len(date_index)
     splits: list[WalkForwardSplit] = []
     train_start = 0
-    train_end = train_size - 1
+    test_start = train_size
     while True:
-        test_start = train_end + 1
+        train_end = test_start - label_horizon_days
         test_end = test_start + test_size - 1
         if test_end >= row_count:
             break
@@ -58,7 +89,7 @@ def generate_walk_forward_splits(
                 test_end=test_end,
             )
         )
-        train_end = train_end + step_size
+        test_start = test_start + step_size
     return splits
 
 
@@ -98,6 +129,7 @@ def run_walk_forward_regression(
     train_size: int,
     test_size: int,
     step_size: int,
+    label_horizon_days: int,
     alpha: float,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Evaluate ridge regression with walk-forward out-of-sample slices.
@@ -111,11 +143,14 @@ def run_walk_forward_regression(
     target_column : str
         Target column name.
     train_size : int
-        Number of rows in each expanding training window start size.
+        Integer position of the first test row before the horizon purge.
     test_size : int
         Number of rows in each out-of-sample test fold.
     step_size : int
         Rows to move training endpoint forward between folds.
+    label_horizon_days : int
+        Number of future sessions in each label. The evaluator purges the
+        final ``H - 1`` nominal training rows so labels are known at test time.
     alpha : float
         Ridge regularization strength.
 
@@ -131,6 +166,7 @@ def run_walk_forward_regression(
         train_size=train_size,
         test_size=test_size,
         step_size=step_size,
+        label_horizon_days=label_horizon_days,
     )
 
     metrics_rows: list[dict[str, object]] = []

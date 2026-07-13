@@ -1,26 +1,20 @@
-# Frozen blog data
+# Frozen Blog Evidence
 
-These files were copied from `outputs/runs/2026-07-13_001/` after running
-`uv run futures-roll-research` on 2026-07-13:
+`metrics.csv`, `predictions.parquet`, and `feature_importance.csv` are frozen
+copies from the production research pipeline. The production path enforces the
+three timing invariants discussed in the article:
 
-- `reported_metrics.csv`: metrics from the production pipeline's current target.
-- `reported_predictions.parquet`: predictions from that production run.
-- `feature_importance.csv`: coefficients from the full pooled ridge fit.
+1. A target dated `t` uses squared returns from `t + 1` through `t + H`.
+2. Persistence uses the trailing `H` squared returns observable at `t`.
+3. Each training fold ends at or before `T - H`, where `T` is the first test
+   date, so every fitted label is known at the forecast origin.
 
-The source review found that the production target is shifted by one session,
-that the persistence baseline uses a forward label before it is observable,
-and that the final training label in each fold overlaps the test period.
-`blog/build_corrected_results.py` corrects the target, uses known trailing
-two-session variance for persistence, purges unavailable training labels, and
-freezes the audited evidence as:
-
-- `corrected_metrics.csv`: mean walk-forward fold metrics for the future-only target.
-- `corrected_predictions.parquet`: out-of-sample predictions for that target.
-
-The run used the repository's tracked `config.toml` and local Parquet inputs.
-The technical figures can be regenerated with:
+Regenerate the evidence and charts from the project root:
 
 ```bash
-uv run python blog/build_corrected_results.py
+uv run python blog/build_blog_results.py
 uv run python blog/generate_charts.py
 ```
+
+Variance and root mean squared error use annualized decimal variance units with
+252 trading sessions per year.

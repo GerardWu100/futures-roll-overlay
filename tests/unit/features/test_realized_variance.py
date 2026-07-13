@@ -10,7 +10,7 @@ from futures_roll_overlay.features.realized_variance import (
 
 
 def test_build_forward_realized_variance_adds_daily_and_forward_columns() -> None:
-    """Target builder should add squared-return and forward-horizon RV columns."""
+    """Target dates should contain only returns strictly after that date."""
     returns = pd.Series(
         [0.01, -0.02, 0.03, 0.01],
         index=pd.to_datetime(["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05"]),
@@ -25,3 +25,16 @@ def test_build_forward_realized_variance_adds_daily_and_forward_columns() -> Non
     assert "forward_realized_variance" in frame.columns
     assert "forward_realized_variance_annualized" in frame.columns
     assert frame.loc[pd.Timestamp("2024-01-02"), "daily_realized_variance"] == 0.01**2
+    expected_forward_variance = pd.Series(
+        [(-0.02) ** 2 + 0.03**2, 0.03**2 + 0.01**2, None, None],
+        index=returns.index.rename("date"),
+        name="forward_realized_variance",
+        dtype=float,
+    )
+    pd.testing.assert_series_equal(
+        frame["forward_realized_variance"],
+        expected_forward_variance,
+    )
+    assert frame.loc[
+        pd.Timestamp("2024-01-03"), "known_trailing_rv_annualized"
+    ] == 126 * (0.01**2 + (-0.02) ** 2)

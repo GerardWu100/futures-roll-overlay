@@ -40,7 +40,7 @@
 ## Planned code excerpts
 
 1. File: `src/futures_roll_overlay/features/realized_variance.py`
-   - Function/block: forward shift followed by rolling sum.
+   - Function/block: explicit lead construction from `t + 1` through `t + H`.
    - Why include this excerpt: it demonstrates the critical exclusion of the current day's return from the target.
 2. File: `src/futures_roll_overlay/evaluation/walk_forward.py`
    - Function/block: train/test slice boundaries.
@@ -58,6 +58,6 @@
 ## Risks, gaps, and assumptions
 
 - Data gaps: one year of local daily data and only three futures roots; no transaction costs or economic value calculation because this is forecasting research, not a tradable overlay.
-- Assumptions: sample calendar rolls, ratio adjustment, corrected two-session target horizon, feasible trailing-variance persistence, a one-row fold purge for label availability, 252 sessions for annualization, 80-row initial train window, 20-row test windows and steps, and ridge penalty `lambda = 1`.
-- Validation checks to run before final draft: rerun the pipeline; freeze exact metrics and predictions; regenerate both graphs from the frozen files; check all English/French image references; run the post validator on both pages; run tests because no production code is being changed but article claims rely on it.
+- Assumptions: sample calendar rolls, ratio adjustment, corrected two-session target horizon, feasible trailing-variance persistence, a one-row fold purge for label availability, 252 sessions for annualization, an initial test boundary at row 80, 20-row test windows and steps, and ridge penalty `lambda = 1`.
+- Validation checks to run before final draft: test the repaired production code; rerun the pipeline; freeze exact metrics and predictions through the production entrypoint; regenerate both graphs; check English/French protected blocks and image references; and run the post validator on both pages.
 - Deployment note: canonical files stay under `futures-roll-overlay/blog/`. Per the user's explicit instruction, there is no publish bundle and no copying, building, committing, or pushing in `~/projects/website` during this task.

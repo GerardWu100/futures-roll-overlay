@@ -18,9 +18,9 @@ reporting surfaces.
 3. Computes daily log returns and forward realized-variance targets.
 4. Engineers explainable features from term structure and lagged variance.
 5. Trains two forecast baselines:
-   - persistence baseline,
+   - observable trailing-variance persistence baseline,
    - ridge regression model.
-6. Evaluates out-of-sample performance with walk-forward splits.
+6. Evaluates out-of-sample performance with horizon-purged walk-forward splits.
 7. Writes compact run artifacts for interpretation and discussion.
 
 ## Raw Data Contract (Offline Default)
@@ -58,7 +58,8 @@ Main sections:
 - `[raw_data]`: local data directories and manifest path.
 - `[research]`: date window, roll settings, target horizon, and feature lags.
 - `[models]`: ridge regularization parameter.
-- `[evaluation]`: walk-forward train/test split lengths.
+- `[evaluation]`: nominal walk-forward boundary, test length, and step length;
+  the target horizon determines the training-label purge automatically.
 
 ## Run Offline Pipeline
 

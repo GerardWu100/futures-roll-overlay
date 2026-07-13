@@ -143,8 +143,8 @@ def plot_prediction_diagnostics(
 def main() -> None:
     """Load frozen results and regenerate every technical blog figure."""
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    metrics = pd.read_csv(DATA_DIR / "corrected_metrics.csv")
-    predictions = pd.read_parquet(DATA_DIR / "corrected_predictions.parquet")
+    metrics = pd.read_csv(DATA_DIR / "metrics.csv")
+    predictions = pd.read_parquet(DATA_DIR / "predictions.parquet")
 
     plot_asset_rmse(metrics=metrics, output_path=IMAGE_DIR / "01_asset_rmse.png")
     plot_prediction_diagnostics(

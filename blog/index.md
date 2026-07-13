@@ -12,7 +12,7 @@ The original question looked modest: can the shape of a futures curve help forec
 
 Then I traced the target one row at a time.
 
-That audit found three timing problems: the forward-variance label was shifted by one session, the persistence benchmark used a label before it could have been observed, and the last training label in each fold reached into the test period. None requires an elaborate fix. Together, however, they change what the experiment means.
+That audit found three timing problems: the forward-variance label was shifted by one session, the persistence benchmark used a label before it could have been observed, and the last training label in each fold reached into the test period. I fixed all three in the production pipeline and added small, hand-calculated tests for the forecast clock.
 
 I kept the rest of the pipeline fixed and reran the out-of-sample comparison from raw contracts. The negative result is the useful part: after the timing repair, neither model explains future variance reliably.
 
@@ -56,7 +56,7 @@ $$
 
 The index matters: the first squared return is $r_{t+1}^2$, not $r_t^2$.
 
-The production code tries to move the series forward and then apply a rolling sum:
+The original implementation moved the series forward and then applied a rolling sum:
 
 ```python
 forward_sum = (
@@ -68,14 +68,14 @@ forward_sum = (
 
 But a pandas rolling window looks backward. With $H=2$, the value attached to date $t$ becomes $r_t^2+r_{t+1}^2$. On a toy series $[a,b,c,d]$ of squared returns, `shift(-1)` gives $[b,c,d,NaN]$, and the two-row rolling result is $[NaN,b+c,c+d,NaN]$. The label at the second row includes that row's own return.
 
-The blog audit constructs each lead explicitly:
+The production target now constructs each lead explicitly:
 
 ```python
-future_terms = [
+future_squared_returns = [
     squared_returns.shift(-lead)
     for lead in range(1, horizon_days + 1)
 ]
-forward_variance = pd.concat(future_terms, axis=1).sum(
+forward_sum = pd.concat(future_squared_returns, axis=1).sum(
     axis=1,
     min_count=horizon_days,
 )
@@ -87,11 +87,12 @@ Now the date-$t$ row contains exactly $r_{t+1}^2+r_{t+2}^2$.
 
 Correct labels are necessary, but their **availability** also matters. A two-session target attached to date $s$ is only fully known after the close on $s+2$. Suppose a test fold begins on date $T$. A training label is observable at that moment only if $s+H\leq T$, or equivalently $s\leq T-H$.
 
-An ordinary walk-forward split ends training at $T-1$. With $H=2$, its last label uses returns from $T$ and $T+1$; the second return has not happened when the forecast at $T$ is made. The audit therefore removes $H-1=1$ row from the end of every training fold. This is a **purge**: a gap that prevents training labels from overlapping information unavailable at the forecast origin.
+An ordinary walk-forward split ends training at $T-1$. With $H=2$, its last label uses returns from $T$ and $T+1$; the second return has not happened when the forecast at $T$ is made. The evaluator now ends training at $T-H$. This omits $H-1=1$ nominal training row between the fitted sample and the test block. The omission is a **purge**: a gap that prevents training labels from overlapping information unavailable at the forecast origin.
 
 ```python
-purged_train_end = split.train_end - (horizon_days - 1)
-train = ordered.iloc[split.train_start : purged_train_end + 1]
+train_end = test_start - label_horizon_days
+train = ordered.iloc[train_start : train_end + 1]
+test = ordered.iloc[test_start : test_end + 1]
 ```
 
 The original persistence benchmark has the same problem. Shifting a forward target by one row does not make it observable. For a feasible benchmark, define known trailing variance $K_t$ from the current and previous $H-1$ returns:
@@ -100,7 +101,7 @@ $$
 K_t=\frac{A}{H}\sum_{i=0}^{H-1}r_{t-i}^{2}.
 $$
 
-At the close on $t$, every term in $K_t$ is known. The corrected persistence forecast simply uses $K_t$ as its estimate of $RV^{ann}_{t,t+H}$.
+At the close on $t$, every term in $K_t$ is known. The corrected persistence forecast uses $K_t$ as its estimate of $RV^{ann}_{t,t+H}$. The ridge feature set remains lagged by one session, so this current trailing window is a benchmark input, not a hidden ridge feature.
 
 The ridge model uses standardized features. Let $n$ be the number of training observations, $y_i$ the forward-variance target for observation $i$, $\mathbf{x}_i$ its standardized feature vector, $b$ the unpenalized intercept, $\boldsymbol{\beta}$ the coefficient vector, and $\lambda$ the penalty strength. The fitted parameters minimize
 
@@ -113,7 +114,7 @@ Here $\lambda=1$. Feature means and standard deviations are estimated on each tr
 
 ## What survives the timing repair
 
-The audited run uses the tracked 2024 local data, calendar rolls, ratio adjustment, an 80-observation initial training window, 20-observation test blocks, and a 20-observation step. Each asset produces 11 test folds and 220 out-of-sample forecasts per model. The chart reports the mean root mean squared error (RMSE) across those folds. RMSE is in annualized variance decimal units, not volatility points.
+The corrected production run uses the tracked 2024 local data, calendar rolls, ratio adjustment, a nominal 80-observation initial boundary, 20-observation test blocks, and a 20-observation step. Because $H=2$, the first fitted ridge sample contains 79 observable labels; the row immediately before the test block is purged. Each asset produces 11 test folds and 220 out-of-sample forecasts per model. The chart reports the mean root mean squared error (RMSE) across those folds. RMSE is in annualized variance decimal units, not volatility points.
 
 ![Mean fold RMSE by futures root and model](images/01_asset_rmse.png)
 
@@ -145,4 +146,11 @@ The experiment is still useful. It demonstrates why futures research needs two c
 
 There are also ordinary research limits. The sample covers one calendar year and three markets. The two-session target is noisy. The roll rule and adjustment choice are fixed rather than tested. Ridge is linear and unconstrained, while realized variance is non-negative and heavily right-skewed. A stronger next experiment would forecast log variance, compare against a trailing exponentially weighted variance benchmark, tune the penalty inside each training fold, and repeat the analysis over several years and multiple horizons.
 
-The first improvement, though, is smaller: add a unit test with hand-calculated returns that checks every target date, then test label availability at each fold boundary. In time-series research, a four-row example often protects more capital than another model.
+The production tests now calculate a four-row target by hand and assert the label boundary at every generated fold. That is deliberately plain. In time-series research, a tiny clock test often protects more capital than another model.
+
+## References
+
+- Andersen, T. G., Bollerslev, T., Diebold, F. X., and Labys, P. (2003), [“Modeling and Forecasting Realized Volatility”](https://doi.org/10.1111/1468-0262.00418), *Econometrica*, 71(2), 579–625.
+- Hoerl, A. E., and Kennard, R. W. (1970), [“Ridge Regression: Biased Estimation for Nonorthogonal Problems”](https://doi.org/10.1080/00401706.1970.10488634), *Technometrics*, 12(1), 55–67.
+- pandas development team, [`Series.rolling` API reference](https://pandas.pydata.org/docs/reference/api/pandas.Series.rolling.html), for the trailing-window semantics behind the alignment defect.
+- López de Prado, M. (2018), *Advances in Financial Machine Learning*, Wiley, Chapter 7, for purging observations whose labels overlap a test interval.

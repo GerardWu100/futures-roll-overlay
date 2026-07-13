@@ -4,7 +4,7 @@ This repository is an offline-first quantitative research pipeline centered on o
 
 **Can futures term-structure and lagged volatility features forecast forward realized variance across a small cross-asset futures set?**
 
-The design is intentionally narrow and interview-defensible. The codebase starts from local raw Parquet files, builds continuous futures series, constructs realized-variance targets and explainable features, trains a baseline and ridge model, evaluates out-of-sample performance with walk-forward splits, and exports compact artifacts for interpretation and notebook teaching.
+The design is intentionally narrow and interview-defensible. The codebase starts from local raw Parquet files, builds continuous futures series, constructs correctly dated realized-variance targets and explainable features, trains a feasible persistence baseline and ridge model, evaluates out-of-sample performance with horizon-purged walk-forward splits, and exports compact artifacts for interpretation and notebook teaching.
 
 By default, runtime does not require `.env` or ClickHouse. Database access exists only in an explicit optional raw-refresh command.
 
@@ -36,3 +36,4 @@ By default, runtime does not require `.env` or ClickHouse. Database access exist
 - 2026-04-19: Added per-asset walk-forward evaluation to keep indexing simple and avoid pooled duplicate-date ambiguity.
 - 2026-04-19: Rebuilt notebook as a full teaching artifact with compact subset outputs so execution stays clear and lightweight.
 - 2026-05-20: Adopted standard `src/futures_roll_overlay/` package layout, `tests/unit` + `tests/integration`, CLI scripts, and removed obsolete superpowers planning docs.
+- 2026-07-13: Replaced the shifted rolling target and lagged-forward-label baseline, then made every walk-forward fold purge labels unavailable at its test origin.
