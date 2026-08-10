@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-
 MONTH_CODE_TO_MONTH: dict[str, int] = {
     "F": 1,
     "G": 2,
@@ -56,20 +55,49 @@ def _compute_curve_slope(closes: np.ndarray) -> float:
     return float(slope)
 
 
-def _contract_end_date(
-    contract_symbol: str,
+def _maturity_gap_days(
+    front_contract: str,
+    second_contract: str,
     contract_end_dates: pd.Series,
-) -> pd.Timestamp:
-    """Resolve contract end date with roll-calendar then expiry-code fallback.
+) -> int:
+    """Return the positive day gap between two contracts' end dates.
 
-    The preferred timing source is the full roll-calendar lifecycle map.
-    Some symbols in a raw futures pull can still be outside the active-contract
-    schedule. For those symbols, we fall back to month-code expiry parsing so
-    term-structure features remain defined instead of dropping the entire date.
+    Both ends are read from the same timing source. The roll-calendar
+    lifecycle map is preferred, because it dates the session on which each
+    contract stopped being the front contract. When either symbol is missing
+    from that map, both ends fall back to month-code expiry parsing.
+
+    Reading one end from the calendar and the other from the month-code proxy
+    would put the two legs on different scales. The calendar dates a roll-out
+    session; the proxy dates the first day of the delivery month. Mixing them
+    produced gaps of a few weeks between contracts that are a full quarter
+    apart, which then inflated the annualized roll yield several times over.
+
+    Parameters
+    ----------
+    front_contract : str
+        Nearest-maturity contract symbol, for example ``ES_Z24``.
+    second_contract : str
+        Next-maturity contract symbol, for example ``ES_H25``.
+    contract_end_dates : pd.Series
+        Series mapping contract symbol to lifecycle end date.
+
+    Returns
+    -------
+    int
+        Day gap, floored at 1 so it can be used as a denominator.
     """
-    if contract_symbol in contract_end_dates.index:
-        return pd.Timestamp(contract_end_dates.loc[contract_symbol])
-    return _parse_contract_expiry(contract_symbol)
+    both_in_calendar = (
+        front_contract in contract_end_dates.index
+        and second_contract in contract_end_dates.index
+    )
+    if both_in_calendar:
+        front_end = pd.Timestamp(contract_end_dates.loc[front_contract])
+        second_end = pd.Timestamp(contract_end_dates.loc[second_contract])
+    else:
+        front_end = _parse_contract_expiry(front_contract)
+        second_end = _parse_contract_expiry(second_contract)
+    return max((second_end - front_end).days, 1)
 
 
 def _apply_regime_persistence(
@@ -162,15 +190,11 @@ def compute_term_structure_features(
         second_close = float(sorted_slice.loc[1, "close"])
         spread = second_close - front_close
 
-        front_end = _contract_end_date(
-            contract_symbol=front_contract,
+        day_gap = _maturity_gap_days(
+            front_contract=front_contract,
+            second_contract=second_contract,
             contract_end_dates=contract_end_dates,
         )
-        second_end = _contract_end_date(
-            contract_symbol=second_contract,
-            contract_end_dates=contract_end_dates,
-        )
-        day_gap = max((second_end - front_end).days, 1)
         roll_yield = ((front_close - second_close) / second_close) * (365.0 / day_gap)
 
         close_curve = sorted_slice["close"].to_numpy(dtype=float)

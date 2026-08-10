@@ -68,7 +68,11 @@ def _continuous_log_returns(
         adjustment=adjustment,
     )
     close_series = continuous.prices.set_index("date")["close"].sort_index()
-    simple_returns = close_series.pct_change().fillna(0.0)
+    # The first session has no prior close, so it has no return. Dropping it
+    # keeps the series honest; filling it with zero would insert a session on
+    # which the market is recorded as not having moved, and that fake zero
+    # would flow straight into the realized-variance target.
+    simple_returns = close_series.pct_change().dropna()
     log_returns = np.log1p(simple_returns)
     log_returns.name = "log_return"
     return log_returns
@@ -105,7 +109,14 @@ def _asset_feature_dataset(asset: str, config: dict[str, Any]) -> pd.DataFrame:
         adjustment=config["research"]["roll_adjustment"],
     )
 
+    # The newest contract in a roll calendar is still the front contract on the
+    # calendar's last date, so its maximum date records where the file stops,
+    # not where the contract rolled out. Dropping it sends term-structure
+    # timing to the month-code expiry proxy for that contract instead of using
+    # a censored date as a maturity-gap denominator.
     contract_end_dates = roll_calendar_for_timing.groupby("contract")["date"].max()
+    calendar_last_date = roll_calendar_for_timing["date"].max()
+    contract_end_dates = contract_end_dates[contract_end_dates < calendar_last_date]
     term_features = compute_term_structure_features(
         daily_data=futures_daily.loc[:, ["date", "symbol", "close"]],
         contract_end_dates=contract_end_dates,
@@ -269,10 +280,11 @@ def _baseline_walk_forward(
 
 
 def _mean_fold_metrics(fold_metrics: pd.DataFrame) -> dict[str, float]:
-    """Average fold metrics with empty-frame fallback."""
+    """Average fold metrics; report missing values when there are no folds."""
     metric_columns = ["mse", "rmse", "mae", "r2"]
     if fold_metrics.empty:
-        return {metric_name: 0.0 for metric_name in metric_columns}
+        # Zeros here would look like a perfect model in metrics.csv.
+        return {metric_name: float("nan") for metric_name in metric_columns}
     return {
         metric_name: float(fold_metrics[metric_name].mean())
         for metric_name in metric_columns

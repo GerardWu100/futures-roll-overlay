@@ -93,15 +93,93 @@ def _volume_roll(
     return front_prices.loc[:, OUTPUT_COLUMNS].copy(), roll_dates, active_contracts
 
 
+def _contract_close_panel(daily_data: pd.DataFrame) -> pd.DataFrame:
+    """Reshape contract-level bars into a wide close panel.
+
+    Returns
+    -------
+    pd.DataFrame
+        Frame indexed by trade date with one column per contract symbol and
+        close prices as values. Dates where a contract did not trade hold
+        ``NaN``.
+    """
+    return daily_data.pivot_table(index="date", columns="symbol", values="close")
+
+
+def _active_contract_on(
+    active_contracts: pd.Series,
+    trade_date: pd.Timestamp,
+) -> str | None:
+    """Return the front contract symbol on one date, or ``None`` if absent."""
+    if trade_date not in active_contracts.index:
+        return None
+    value = active_contracts.loc[trade_date]
+    if isinstance(value, pd.Series):
+        value = value.iloc[0]
+    return str(value)
+
+
+def _roll_boundary_closes(
+    adjusted: pd.DataFrame,
+    current_index: int,
+    roll_timestamp: pd.Timestamp,
+    active_contracts: pd.Series,
+    contract_closes: pd.DataFrame,
+) -> tuple[float, float]:
+    """Return ``(outgoing_close, incoming_close)`` for one roll boundary.
+
+    Both legs are read from the last session before the roll, where the
+    outgoing and the incoming contract normally both trade. Measuring them on
+    the same session isolates the price difference between the two contracts,
+    which is the only part a back-adjustment should remove.
+
+    Reading the outgoing close on one session and the incoming close on the
+    next session instead would fold that session's genuine market move into
+    the adjustment factor and force the roll-day return of the adjusted series
+    to exactly zero.
+
+    The cross-session pair taken from the stitched front series is used only as
+    a fallback, when the incoming contract has no bar on the session before the
+    roll.
+    """
+    fallback = (
+        float(adjusted.loc[current_index - 1, "close"]),
+        float(adjusted.loc[current_index, "close"]),
+    )
+    previous_date = pd.Timestamp(adjusted.loc[current_index - 1, "date"])
+    if previous_date not in contract_closes.index:
+        return fallback
+
+    outgoing_symbol = _active_contract_on(active_contracts, previous_date)
+    incoming_symbol = _active_contract_on(active_contracts, roll_timestamp)
+    if outgoing_symbol is None or incoming_symbol is None:
+        return fallback
+
+    overlap_row = contract_closes.loc[previous_date]
+    if outgoing_symbol not in overlap_row.index:
+        return fallback
+    if incoming_symbol not in overlap_row.index:
+        return fallback
+
+    outgoing_close = overlap_row[outgoing_symbol]
+    incoming_close = overlap_row[incoming_symbol]
+    if pd.isna(outgoing_close) or pd.isna(incoming_close):
+        return fallback
+    return float(outgoing_close), float(incoming_close)
+
+
 def _apply_roll_adjustment(
     prices: pd.DataFrame,
     roll_dates: list[pd.Timestamp],
     adjustment: RollAdjustment,
+    active_contracts: pd.Series,
+    contract_closes: pd.DataFrame,
 ) -> pd.DataFrame:
     """Back-adjust historical prices so roll gaps do not create artificial jumps.
 
     Walk roll dates from newest to oldest so each earlier segment is scaled or
-    shifted using the close gap observed at the later roll boundary.
+    shifted by the outgoing-to-incoming price difference measured on the last
+    session before that roll.
     """
     adjusted = prices.copy().sort_values("date").reset_index(drop=True)
     for roll_timestamp in sorted(roll_dates, reverse=True):
@@ -111,18 +189,23 @@ def _apply_roll_adjustment(
         current_index = int(roll_index[0])
         if current_index == 0:
             continue
-        old_close = float(adjusted.loc[current_index - 1, "close"])
-        new_close = float(adjusted.loc[current_index, "close"])
+        old_close, new_close = _roll_boundary_closes(
+            adjusted=adjusted,
+            current_index=current_index,
+            roll_timestamp=roll_timestamp,
+            active_contracts=active_contracts,
+            contract_closes=contract_closes,
+        )
         if adjustment == "ratio":
             if old_close == 0.0:
                 continue
-            # Multiply all prior OHLC levels by the close ratio at the roll.
+            # Multiply all prior OHLC levels by the contract-to-contract ratio.
             factor = new_close / old_close
             adjusted.loc[: current_index - 1, PRICE_COLUMNS] = (
                 adjusted.loc[: current_index - 1, PRICE_COLUMNS] * factor
             )
         else:
-            # Panama: add the close gap to all prior OHLC levels.
+            # Panama: add the contract-to-contract gap to all prior OHLC levels.
             gap = new_close - old_close
             adjusted.loc[: current_index - 1, PRICE_COLUMNS] = (
                 adjusted.loc[: current_index - 1, PRICE_COLUMNS] + gap
@@ -179,6 +262,8 @@ def build_continuous(
         prices=front_prices,
         roll_dates=roll_dates,
         adjustment=resolved_adjustment,
+        active_contracts=active_contracts,
+        contract_closes=_contract_close_panel(daily_data=prepared_daily),
     )
 
     return ContinuousFutures(

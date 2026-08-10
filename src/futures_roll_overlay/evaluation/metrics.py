@@ -30,11 +30,13 @@ def compute_regression_metrics(
     )
     aligned = aligned.dropna()
     if aligned.empty:
+        # No overlapping observations means the metrics are undefined. Zeros
+        # would read as a perfect fit, so report missing values instead.
         return {
-            "mse": 0.0,
-            "rmse": 0.0,
-            "mae": 0.0,
-            "r2": 0.0,
+            "mse": float("nan"),
+            "rmse": float("nan"),
+            "mae": float("nan"),
+            "r2": float("nan"),
         }
 
     residual = aligned["actual"] - aligned["prediction"]
