@@ -1,70 +1,50 @@
-# Portable Futures Research Backbone
+# futures-roll-overlay
 
-This repository is a small offline-first quantitative finance research project.
+Offline quantitative research pipeline that asks one question: can futures
+term-structure and lagged realized-volatility features forecast forward
+realized variance for a small cross-asset futures set? The scope is
+intentionally narrow — no options-implied overlays, no portfolio strategy
+layer, no Greeks, no dashboards.
 
-Core research question:
-
-**Can futures term-structure and lagged volatility features help forecast
-forward realized variance for a small cross-asset futures set?**
-
-The project is intentionally narrow. It does **not** include options-implied
-overlays, portfolio strategy products, Greeks, stress dashboards, or HTML
-reporting surfaces.
-
-## What This Project Does
+## What it does
 
 1. Loads local futures and roll-calendar Parquet files from `data/raw/`.
-2. Builds continuous futures series with configurable roll and adjustment rules.
-3. Computes daily log returns and forward realized-variance targets.
-4. Engineers explainable features from term structure and lagged variance.
-5. Trains two forecast baselines:
-   - observable trailing-variance persistence baseline,
-   - ridge regression model.
-6. Evaluates out-of-sample performance with horizon-purged walk-forward splits.
-7. Writes compact run artifacts for interpretation and discussion.
+2. Builds continuous futures series with configurable roll and price-adjustment
+   rules (calendar or volume roll; ratio or Panama adjustment).
+3. Computes daily log returns and a forward annualized realized-variance
+   target.
+4. Engineers explainable features from term structure (front-second spread,
+   annualized roll yield, slope) and lagged realized variance.
+5. Trains two models: an observable trailing-variance persistence baseline,
+   and a ridge regression model.
+6. Evaluates out-of-sample performance per asset with horizon-purged
+   walk-forward splits.
+7. Writes run artifacts for interpretation and notebook teaching.
 
-## Raw Data Contract (Offline Default)
+Default assets are ES, CL, and GC (`config.toml`, `[research].assets`).
 
-Default runs read only from `data/raw`.
+## Requirements
 
-Required layout:
+- Python >= 3.13
+- Default runs are fully offline and need no external service or `.env` file.
+- Optional: a ClickHouse instance, only for the one-time raw-data refresh
+  command (`futures-roll-refresh-raw`). It reads `CLICKHOUSE_HOST`,
+  `CLICKHOUSE_PORT`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`,
+  `CLICKHOUSE_SECURE`, `CLICKHOUSE_VERIFY` from a local `.env` file
+  (path set by `[raw_refresh].clickhouse_env` in `config.toml`).
 
-```text
-data/raw/
-├── futures/
-│   ├── ES.parquet
-│   ├── CL.parquet
-│   └── GC.parquet
-├── roll_calendars/
-│   ├── ES_sample.parquet
-│   ├── ES_full.parquet
-│   ├── CL_sample.parquet
-│   ├── CL_full.parquet
-│   ├── GC_sample.parquet
-│   └── GC_full.parquet
-└── manifest/
-    └── dataset_manifest.json
-```
-
-The manifest records asset, table, date coverage, row counts, schema columns,
-and file sizes.
-
-## Configuration
-
-All tunable settings live in `config.toml`.
-
-Main sections:
-
-- `[raw_data]`: local data directories and manifest path.
-- `[research]`: date window, roll settings, target horizon, and feature lags.
-- `[models]`: ridge regularization parameter.
-- `[evaluation]`: nominal walk-forward boundary, test length, and step length;
-  the target horizon determines the training-label purge automatically.
-
-## Run Offline Pipeline
+## Setup
 
 ```bash
 uv sync --all-groups
+```
+
+`--all-groups` pulls in the `dev` group (pytest, nbconvert, jupyter), needed
+for tests and the notebook. `uv sync` alone is enough to run the pipeline.
+
+## Usage
+
+```bash
 uv run futures-roll-research
 ```
 
@@ -74,42 +54,61 @@ Equivalent module invocation:
 uv run python -m futures_roll_overlay.pipeline.run_research_pipeline
 ```
 
-Output convention:
+Optional shell wrapper: `./scripts/run_research_pipeline.sh`.
+
+Optional one-time raw-cache refresh from ClickHouse (writes new Parquet into
+`data/raw`; not required for default runs): `uv run futures-roll-refresh-raw`.
+
+Run the tests: `uv run python -m pytest -q`.
+
+Execute the teaching notebook end to end:
+
+```bash
+uv run --group dev python -m nbconvert --to notebook --execute \
+    notebooks/research_pipeline_demo.ipynb --output executed.ipynb
+```
+
+## Configuration
+
+All tunable settings live in `config.toml`:
+
+- `[raw_data]`: local data directories and manifest path.
+- `[research]`: assets, date window, roll method/adjustment, target horizon,
+  and feature lags.
+- `[models]`: ridge regularization parameter.
+- `[evaluation]`: walk-forward train/test/step sizes; the target horizon
+  determines the training-label purge automatically.
+- `[raw_refresh]`: path to the ClickHouse credential file used only by the
+  optional refresh command.
+
+## Layout
 
 ```text
-outputs/runs/<run_id>/
-├── dataset.parquet
-├── predictions.parquet
-├── metrics.csv
-├── feature_importance.csv
-└── prediction_diagnostics.png
+config.toml              tunable settings for data, research, model, evaluation
+data/raw/                tracked offline futures, roll-calendar, and manifest inputs
+docs/reference/          methodology notes (realized variance, evaluation protocol, raw-cache contract)
+notebooks/                teaching notebook that runs the full pipeline
+scripts/                  thin shell wrapper around the CLI entrypoint
+src/futures_roll_overlay/ data_access, continuous_futures, features, models, evaluation, pipeline
+tests/                    unit tests per stage plus one integration test
+outputs/                  run artifacts (not tracked in git)
 ```
 
-## Execute Teaching Notebook
+See `GUIDE_ROOT.md` and `GUIDE_OVERVIEW.md` for the domain-logic derivation
+and per-folder guides (`GUIDE_<folder>.md`) for module-level detail.
 
-```bash
-uv sync --all-groups
-uv run --group dev python -m nbconvert --to notebook --execute notebooks/research_pipeline_demo.ipynb --output executed.ipynb
+## Output
+
+Each run writes to `outputs/runs/<run_id>/`:
+
+```text
+dataset.parquet               assembled feature/target dataset
+predictions.parquet           walk-forward out-of-sample predictions
+metrics.csv                   pooled and per-asset regression metrics
+feature_importance.csv        ridge coefficients
+prediction_diagnostics.png    diagnostic plot
 ```
 
-The notebook follows strict Markdown/code alternation and demonstrates each
-pipeline stage directly from local Parquet inputs.
+## License
 
-## Tests And Lint
-
-```bash
-uv run python -m pytest -q
-uv run ruff check src tests
-```
-
-Shell wrapper (optional):
-
-```bash
-./scripts/run_research_pipeline.sh
-```
-
-## Optional One-Time ClickHouse Refresh (Not Default Path)
-
-ClickHouse can be used only for explicit raw-cache refresh workflows that write
-new Parquet bundles into `data/raw`. Default tests, pipeline runs, and notebook
-execution do not require `.env` or database access.
+All rights reserved. See [LICENSE](LICENSE).
