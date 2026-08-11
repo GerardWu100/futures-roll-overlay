@@ -12,7 +12,6 @@ from tempfile import TemporaryDirectory
 
 from futures_roll_overlay.pipeline.run_research_pipeline import run_research_pipeline
 
-
 BLOG_ROOT = Path(__file__).resolve().parent
 DATA_DIR = BLOG_ROOT / "data"
 

@@ -7,9 +7,11 @@ from dataclasses import dataclass
 import pandas as pd
 
 from futures_roll_overlay.evaluation.metrics import compute_regression_metrics
-from futures_roll_overlay.models.train import apply_feature_standardizer
-from futures_roll_overlay.models.train import fit_feature_standardizer
-from futures_roll_overlay.models.train import fit_ridge_regression
+from futures_roll_overlay.models.train import (
+    apply_feature_standardizer,
+    fit_feature_standardizer,
+    fit_ridge_regression,
+)
 
 
 @dataclass(frozen=True)

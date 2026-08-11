@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
 BLOG_ROOT = Path(__file__).resolve().parent
 DATA_DIR = BLOG_ROOT / "data"
 IMAGE_DIR = BLOG_ROOT / "images"

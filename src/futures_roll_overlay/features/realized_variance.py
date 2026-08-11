@@ -68,9 +68,7 @@ def build_forward_realized_variance(
         {
             "log_return": log_returns,
             "daily_realized_variance": squared_returns,
-            "known_trailing_rv_annualized": (
-                annualization_factor / horizon_days
-            )
+            "known_trailing_rv_annualized": (annualization_factor / horizon_days)
             * trailing_sum,
             "forward_realized_variance": forward_sum,
             "forward_realized_variance_annualized": annualized_forward_sum,

@@ -12,10 +12,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from futures_roll_overlay.data_access.raw_cache import get_futures_daily
-from futures_roll_overlay.data_access.raw_cache import get_roll_calendar
-from futures_roll_overlay.data_access.raw_cache import list_raw_inventory
-from futures_roll_overlay.data_access.raw_cache import load_config
+from futures_roll_overlay.data_access.raw_cache import (
+    get_futures_daily,
+    get_roll_calendar,
+    list_raw_inventory,
+    load_config,
+)
 
 
 def test_load_config_reads_project_defaults() -> None:

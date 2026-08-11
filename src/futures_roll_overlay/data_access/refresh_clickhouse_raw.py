@@ -7,8 +7,8 @@ Use it only when you need to repopulate ``data/raw`` from ClickHouse.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +16,12 @@ import clickhouse_connect
 import pandas as pd
 from dotenv import dotenv_values
 
-from futures_roll_overlay.data_access.raw_cache import FUTURES_COLUMNS
-from futures_roll_overlay.data_access.raw_cache import ROLL_CALENDAR_COLUMNS
-from futures_roll_overlay.data_access.raw_cache import load_config
-from futures_roll_overlay.data_access.raw_cache import resolve_project_path
+from futures_roll_overlay.data_access.raw_cache import (
+    FUTURES_COLUMNS,
+    ROLL_CALENDAR_COLUMNS,
+    load_config,
+    resolve_project_path,
+)
 
 
 @dataclass(frozen=True)
@@ -160,7 +162,7 @@ def _manifest_row(
         "file": file_path.as_posix(),
         "start_date": frame["date"].min().strftime("%Y-%m-%d"),
         "end_date": frame["date"].max().strftime("%Y-%m-%d"),
-        "row_count": int(len(frame)),
+        "row_count": len(frame),
         "columns": columns,
         "file_size_bytes": int(file_path.stat().st_size),
     }

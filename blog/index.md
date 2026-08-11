@@ -72,8 +72,7 @@ The production target now constructs each lead explicitly:
 
 ```python
 future_squared_returns = [
-    squared_returns.shift(-lead)
-    for lead in range(1, horizon_days + 1)
+    squared_returns.shift(-lead) for lead in range(1, horizon_days + 1)
 ]
 forward_sum = pd.concat(future_squared_returns, axis=1).sum(
     axis=1,
