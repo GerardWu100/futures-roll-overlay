@@ -168,27 +168,25 @@
 
 <p class="eyebrow"><span class="dot"></span>futures-roll-overlay &middot; code walkthrough</p>
 <h1>Forecasting forward realized variance from futures term structure</h1>
-<p class="lede">What this repository does, how the modules fit together, what each
-configuration setting changes, and where the code is still weak. Every number on
-this page came from running the code on the Parquet files in <code>data/raw</code>.</p>
+<p class="lede">This page explains the repository, its modules, its settings, and its
+remaining weaknesses. Every number came from running the code on the Parquet files in
+<code>data/raw</code>.</p>
 
 <div class="box def">
   <span class="k">How to use this</span>
-  <p>Sections follow the order the pipeline runs in. Code blocks are copied from the
-  files under <code>src/futures_roll_overlay/</code>. Coloured boxes carry the plain-English
-  summary, the maths, real sample data, and the traps. This page explains
-  <b>structure and behaviour</b>, not every line.</p>
+  <p>Sections follow the pipeline's run order. Code blocks come from
+  <code>src/futures_roll_overlay/</code>. Coloured boxes hold summaries, formulas, sample
+  data, and warnings. This page explains <b>structure and behaviour</b>, not every line.</p>
 </div>
 
 <div class="box why">
   <span class="k">The process in plain English</span>
-  <p>A futures contract expires, so a single contract cannot give you a long price
-  history. The code stitches a chain of expiring contracts into one continuous price
-  series per asset, turns that into daily returns, and then asks a forecasting question:
-  given what the futures curve looks like today and how much the market has been moving
-  lately, how much will the market move over the next couple of days? It answers with two
-  models &mdash; a simple "tomorrow looks like today" benchmark and a ridge regression &mdash;
-  and scores both out of sample. Everything runs offline from local files, with one command.</p>
+  <p>A futures contract expires, so one contract cannot provide a long price history. The
+  code joins expiring contracts into one continuous price series per asset, converts it to
+  daily returns, and asks how much the market will move over the next couple of days. It
+  uses two models: a simple "tomorrow looks like today" benchmark and ridge regression.
+  It tests both on data they did not use for fitting. The whole run uses local files and
+  one command.</p>
 </div>
 
 <h2 id="map"><span class="sec-no">00</span>Map</h2>
@@ -208,9 +206,8 @@ flowchart LR
   ridge --> out[("outputs/runs/RUN_ID")]
   base --> out
 </div>
-<p class="fnote">Boxes are functions, cylinders are files on disk, arrows are the
-direction data moves. Everything left of <code>build_asset_dataset()</code> runs once per
-asset; the two model boxes also run once per asset.</p>
+<p class="fnote">Boxes are functions, cylinders are files, and arrows show data flow. Every
+step left of <code>build_asset_dataset()</code> runs once per asset. Each model does too.</p>
 
 <div class="toc">
   <div class="rk">Contents</div>
@@ -236,11 +233,11 @@ asset; the two model boxes also run once per asset.</p>
 
 <h2 id="goal"><span class="sec-no">01</span>What the project is for, and how it is laid out</h2>
 
-<p>The research question, taken from <code>README.md</code>: can futures term-structure and
-lagged volatility features help forecast forward realized variance for a small
-cross-asset futures set? Three assets are in scope &mdash; <b>ES</b> (E-mini S&amp;P 500
-equity index futures), <b>CL</b> (WTI crude oil futures) and <b>GC</b> (gold futures)
-&mdash; over calendar year 2024.</p>
+<p>The research question from <code>README.md</code> is whether futures term structure and
+lagged volatility features can forecast future realized variance for a small set of
+different futures markets. The scope is calendar year 2024 and three assets: <b>ES</b>
+(E-mini S&amp;P 500 equity index futures), <b>CL</b> (WTI crude oil futures), and <b>GC</b>
+(gold futures).</p>
 
 <div class="box def"><span class="k">Terms used on this page</span>
 <p><b>Futures contract</b>: an agreement to buy or sell something at a fixed price on a
@@ -285,8 +282,8 @@ run by anyone, and the tests never need a database.</p></div>
 
 <h2 id="config"><span class="sec-no">02</span>Configuration &mdash; <code>config.toml</code></h2>
 
-<p>Every tunable value lives in one file at the repository root. The table below says what
-each one does and what changing it would do.</p>
+<p>All tunable values live in one file at the repository root. The table explains each
+setting and the effect of changing it.</p>
 
 <div class="scroll">
 <table>
@@ -322,8 +319,8 @@ each one does and what changing it would do.</p>
 
 <h2 id="access"><span class="sec-no">03</span>Reading the raw files &mdash; <code>raw_cache.py</code></h2>
 
-<p>Three public loaders and a settings resolver. Nothing clever happens here, which is the
-point: this module is the only place that knows where files live.</p>
+<p>This module has three public loaders and a settings resolver. It is deliberately simple:
+it is the only module that knows where the files live.</p>
 
 <pre>PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.toml"
@@ -332,9 +329,8 @@ FUTURES_COLUMNS = ["symbol", "date", "open", "high", "low", "close", "volume"]
 ROLL_CALENDAR_COLUMNS = ["date", "contract"]</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Find the project folder relative to this file, read the settings file, open the
-requested Parquet file, check the columns it promised are there, filter to the date
-window, and hand back a sorted table.</p></div>
+<p>Find the project folder, read the settings, open the requested Parquet file, check its
+columns, filter the dates, and return a sorted table.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
 <p><b><code>get_futures_daily(root, start, end, config)</code></b> &mdash;
@@ -361,9 +357,9 @@ ES_M24   2024-01-02  4872.00  4877.0  4817.25  4834.75     1970
 ES_U24   2024-01-02  4890.00  4890.0  4862.00  4862.00        3
 ES_Z24   2024-01-02  4915.00  4915.0  4915.00  4915.00        1</pre></div>
 </div>
-<p>Four maturities quoted on the same day. Volume falls away sharply past the front
-contract &mdash; 1.5 million lots against 3 lots &mdash; which is why the further-out prices
-are stale and the slope feature built from them is fragile.</p></div>
+<p>Four maturities are quoted on the same day. Volume drops from 1.5 million lots for the
+front contract to 3 lots for a distant one. Those distant prices can be stale, making the
+slope feature fragile.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; the manifest</span>
 <div class="io stack">
@@ -378,26 +374,23 @@ ES     roll_calendars  data/raw/roll_calendars/ES_full.parquet    2010-01-04  20
 </div></div>
 
 <div class="box why"><span class="k">Why paths climb four parents</span>
-<p>The file sits at <code>src/futures_roll_overlay/data_access/raw_cache.py</code>. Four
-<code>.parent</code> steps from the file itself land on the repository root, so
-<code>config.toml</code> and <code>data/raw</code> resolve the same way whether you run
-the pipeline from the repository root, from a notebook, or from a temporary folder in a
-test. <code>run_research_pipeline.py</code> sits one level deeper in the package but
-also needs four steps, because it is one folder further along the same depth.</p></div>
+<p>The file is at <code>src/futures_roll_overlay/data_access/raw_cache.py</code>. Four
+<code>.parent</code> steps reach the repository root, so <code>config.toml</code> and
+<code>data/raw</code> resolve correctly from the root, a notebook, or a test's temporary
+folder. <code>run_research_pipeline.py</code> is one level deeper in the package, but it
+also needs four steps to reach the root.</p></div>
 
 <div class="box warn"><span class="k">Trap</span>
-<p><code>_read_parquet_with_columns</code> raises rather than repairing. A missing file
-raises <code>FileNotFoundError</code> with the table name; a missing column raises
-<code>ValueError</code> listing exactly which columns are absent. There is no silent
-fallback to an empty frame, so a broken data drop fails at the first read rather than
-producing a model fitted on nothing.</p></div>
+<p><code>_read_parquet_with_columns</code> raises an error instead of repairing bad input.
+A missing file raises <code>FileNotFoundError</code> with the table name. A missing column
+raises <code>ValueError</code> and lists the absent columns. The loader never substitutes an
+empty table, so bad data fails at the first read instead of reaching the model.</p></div>
 
 <h2 id="cont"><span class="sec-no">04</span>Stitching contracts together &mdash; <code>build.py</code></h2>
 
-<p>This is the module where quantitative futures work actually happens, and it is where
-the most serious defect in the repository was found. Two decisions are made here: which
-contract is the front contract on each day, and how to remove the price jump that appears
-when the front contract changes.</p>
+<p>This is the main futures-processing module and the location of the repository's most
+serious defect. It makes two decisions: which contract is the front contract each day,
+and how to remove the price jump when that contract changes.</p>
 
 <h3>Choosing the front contract</h3>
 
@@ -414,9 +407,9 @@ when the front contract changes.</p>
     return front_prices, roll_dates, active_contracts</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>The calendar says "on this date, the front contract is this one". Join that to the
-price table and you have one price series. A roll date is any day where the named
-contract differs from the day before.</p></div>
+<p>The calendar names the front contract for each date. Joining it to the price table
+leaves one price series. A roll date is a day when that contract differs from the previous
+day's contract.</p></div>
 
 <div class="box def"><span class="k">What it does</span>
 <p><b>Input:</b> the full contract-level price panel and a <code>date, contract</code> calendar.
@@ -429,9 +422,9 @@ name as a deterministic tie-break.</p></div>
 <h3>Removing the roll jump</h3>
 
 <p>On 13 March 2024 the ES front contract was ES_H24 at 5173.25. On 14 March it was ES_M24
-at 5217.00. Nothing happened in the equity market to justify a 0.85% gap; the two numbers
-are simply prices of two different contracts. A back-adjustment removes that gap so the
-stitched series behaves like a single tradable instrument.</p>
+at 5217.00. The 0.85% gap is not a market move; it is the price difference between two
+contracts. Back-adjustment removes that gap so the stitched series behaves like one
+tradable instrument.</p>
 
 <pre>def _roll_boundary_closes(adjusted, current_index, roll_timestamp,
                           active_contracts, contract_closes):
@@ -476,9 +469,9 @@ factor f = 5237.50 / 5173.25 = 1.0124197</pre></div>
 log return on the roll day = ln(5398.2703 / 5419.4826) = -0.0039218
 which equals ln(5217.00 / 5237.50), the M24 contract's own overnight move</pre></div>
 </div>
-<p>The adjusted level on 12 and 13 March is far above the raw level because those two days
-also carry the factors from the June, September and December rolls, applied later in the
-loop.</p></div>
+<p>The adjusted level on 12 and 13 March is much higher than the raw level because those
+days also include the factors from the June, September, and December rolls. The loop
+applies those later factors to earlier segments.</p></div>
 
 <div class="box warn"><span class="k">Trap: this is the bug that was fixed</span>
 <p>The original code took the outgoing close from session $p$ and the incoming close from
@@ -491,15 +484,14 @@ misclassified as a roll gap and erased. Since the entire project forecasts reali
 variance, deleting the largest daily moves of the year is not a rounding error.</p></div>
 
 <div class="box why"><span class="k">Why ratio rather than Panama by default</span>
-<p>Panama adds a constant to every earlier price. That preserves absolute price
-differences but distorts percentage returns, and it can drive very old prices negative
-over long histories. Ratio adjustment preserves percentage returns exactly within each
-segment, which is what a study of squared returns needs. Both are implemented; the config
-picks one.</p></div>
+<p>Panama adds a constant to every earlier price. It preserves absolute price differences
+but distorts percentage returns and can make old prices negative over long histories. Ratio
+adjustment preserves percentage returns within each segment, which a squared-return study
+needs. Both methods are implemented; the config selects one.</p></div>
 
 <h2 id="term"><span class="sec-no">05</span>Curve shape features &mdash; <code>term_structure.py</code></h2>
 
-<p>Three numbers and one label per day, describing the shape of the futures curve.</p>
+<p>Each day produces three numbers and one label describing the futures curve.</p>
 
 <pre>MONTH_CODE_TO_MONTH = {"F":1,"G":2,"H":3,"J":4,"K":5,"M":6,
                        "N":7,"Q":8,"U":9,"V":10,"X":11,"Z":12}
@@ -514,12 +506,11 @@ def _parse_contract_expiry(contract_symbol: str) -> pd.Timestamp:
     return pd.Timestamp(year=year_number, month=month_number, day=1)</pre>
 
 <div class="box def"><span class="k">Syntax: the exchange month code</span>
-<p>Futures symbols encode the delivery month as a single letter. <code>ES_H24</code> is
-the March 2024 E-mini S&amp;P contract; <code>H</code> is March, <code>M</code> June,
-<code>U</code> September, <code>Z</code> December. Crude oil uses all twelve letters
-because it has a monthly cycle. The parsed date is the first of the delivery month, which
-is only a proxy &mdash; real expiry is later in the month &mdash; but it is exact enough
-to sort maturities into order.</p></div>
+<p>Futures symbols encode the delivery month with one letter. <code>ES_H24</code> is the
+March 2024 E-mini S&amp;P contract: <code>H</code> means March, <code>M</code> June,
+<code>U</code> September, and <code>Z</code> December. Crude oil uses all twelve letters
+because it has monthly contracts. The parser uses the first day of the delivery month as
+a proxy. Actual expiry is later, but this date is sufficient to order maturities.</p></div>
 
 <div class="box def"><span class="k">The formula</span>
 <p>Let $F_1$ be the close of the nearest contract on a given day and $F_2$ the close of
@@ -557,30 +548,30 @@ roll_yield= (4783.50-4834.75)/4834.75 * 365/92
           = -0.010600 * 3.9674 = -0.042056
 slope     = (4862.00/4783.50 - 1) / 2 = 0.008205</pre></div>
 </div>
-<p>The slope shortcut holds because with three equally spaced ranks the least-squares
-slope is just half the rise from the first point to the last. Across the whole pooled
-dataset of 924 rows the regime labels split 579 contango, 325 backwardation, 20 flat
-&mdash; ES is in contango on all 308 of its days, CL in backwardation on 291 of its 308.</p></div>
+<p>With three equally spaced ranks, the least-squares slope is half the rise from the
+first point to the last. Across the 924-row dataset, the regime labels are 579 contango,
+325 backwardation, and 20 flat. ES is in contango on all 308 days; CL is in backwardation
+on 291 of 308.</p></div>
 
 <div class="box why"><span class="k">Why regime labelling has a persistence rule</span>
-<p><code>_apply_regime_persistence</code> refuses to switch label until a challenger has
-appeared for <code>regime_persistence_days</code> consecutive observations. Without it, a
-roll yield sitting close to the flat threshold would flip the label back and forth daily
-and the one-hot columns would become noise. At the shipped value of 1 the rule is off,
-so this is a lever waiting to be used rather than one currently doing work.</p></div>
+<p><code>_apply_regime_persistence</code> waits for a challenger to appear for
+<code>regime_persistence_days</code> consecutive observations before changing the label.
+Without this rule, a roll yield near the flat threshold could flip labels every day and
+turn the one-hot columns into noise. The value is 1 in the shipped config, so the rule is
+currently off.</p></div>
 
 <div class="box warn"><span class="k">Trap: two different sources of time</span>
-<p>The denominator $d$ can come from two places: the roll calendar, which dates the
-session a contract stopped being the front contract, or the month-code proxy, which dates
-the first of the delivery month. They are on different scales. Reading one leg from each
-was producing a gap of 18 days between ES_Z24 and ES_H25, contracts a full quarter apart,
-which inflated the annualized roll yield roughly fivefold. <code>_maturity_gap_days</code>
-now insists both legs come from the same source. See <a href="#fixes">Fixes applied</a>.</p></div>
+<p>The denominator $d$ can use the roll calendar, which dates when a contract stopped being
+the front contract, or the month-code proxy, which uses the first day of the delivery
+month. These sources use different dates. Mixing them produced an 18-day gap between
+ES_Z24 and ES_H25, even though the contracts are a full quarter apart. That inflated the
+annualized roll yield about fivefold. <code>_maturity_gap_days</code> now uses one source
+for both contracts. See <a href="#fixes">Fixes applied</a>.</p></div>
 
 <h2 id="rv"><span class="sec-no">06</span>The forecasting target &mdash; <code>realized_variance.py</code></h2>
 
-<p>One function, and it is the most timing-sensitive code in the repository. Getting the
-target off by one day would make every result meaningless.</p>
+<p>This one function is the repository's most timing-sensitive part. Moving the target by
+one day would invalidate every result.</p>
 
 <pre>squared_returns = log_returns.pow(2)
 <span class="c"># Build the target from explicit leads. A shifted rolling window still</span>
@@ -596,10 +587,9 @@ trailing_sum = squared_returns.rolling(
 ).sum()</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>For each day, add up the squared returns of the next $H$ days &mdash; that is what we
-are trying to predict. Separately, add up the squared returns of the last $H$ days
-including today &mdash; that is what we already know, and it becomes the benchmark
-forecast.</p></div>
+<p>For each day, add the squared returns from the next $H$ days. That is the target. Then
+add the squared returns from the last $H$ days, including today. That is the known value
+used by the benchmark.</p></div>
 
 <div class="box def"><span class="k">The formula</span>
 <p>With $r_t$ the daily log return, the daily realized variance is</p>
@@ -610,10 +600,10 @@ RV^{ann}_{t,t+H}=\frac{A}{H}\,RV_{t,t+H}$$</p>
 <p>and the benchmark, using only information available after the close on day $t$, is</p>
 <p>$$K_t=\frac{A}{H}\sum_{i=0}^{H-1}r_{t-i}^2$$</p>
 <p class="fnote">$H$ is <code>target_horizon_days</code>, here 2. $A$ is
-<code>annualization_factor</code>, here 252 trading days per year. The sum for the target
-starts at $i=1$, so day $t$'s own return is excluded; the sum for the benchmark starts at
-$i=0$, so day $t$'s own return is included. That one index is the whole difference between
-a forecast and a peek at the answer.</p></div>
+<code>annualization_factor</code>, here 252 trading days per year. The target starts at
+$i=1$, so it excludes day $t$'s return. The benchmark starts at $i=0$, so it includes
+that return. This index difference separates a valid forecast from one that uses the
+answer.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; ES, first rows</span>
 <div class="io stack">
@@ -631,19 +621,17 @@ $(252/2)\times(1.401783\times10^{-5}+5.466703\times10^{-7})=126\times1.45645\tim
 Check the 4 January benchmark:
 $(252/2)\times(5.013364\times10^{-5}+1.401783\times10^{-5})=0.0080831$.</p></div>
 </div>
-<p>The first row has no benchmark and the last two rows have no target, both by
-construction. Those rows are dropped later, which is why 311 return observations become
-308 modelling rows.</p></div>
+<p>By construction, the first row has no benchmark and the last two have no target. The
+pipeline drops them later, leaving 308 modelling rows from 311 return observations.</p></div>
 
 <div class="box why"><span class="k">Why explicit leads instead of a shifted rolling window</span>
-<p>A rolling sum in pandas always looks backwards. Writing
-<code>rolling(H).sum().shift(-H)</code> is tempting but attaches
-$r_t^2+\ldots+r_{t+H-1}^2$ to date $t$ &mdash; it includes day $t$'s own return, which is
-already known when the forecast is made. That single contamination would inflate the
-apparent skill of any model. Building the sum from <code>shift(-1)</code> through
-<code>shift(-H)</code> makes the intent impossible to misread. The
-<code>min_count=horizon_days</code> argument matters too: without it pandas would treat
-a partly-missing sum as valid and produce a short target at the end of the sample.</p></div>
+<p>A pandas rolling sum looks backward. The tempting expression
+<code>rolling(H).sum().shift(-H)</code> attaches
+$r_t^2+\ldots+r_{t+H-1}^2$ to date $t$, including the return already known on day $t$.
+That would make the model look better than it is. Building the sum with
+<code>shift(-1)</code> through <code>shift(-H)</code> keeps the timing clear. The
+<code>min_count=horizon_days</code> argument also matters: without it, pandas could accept
+a partial sum and create a short target at the end of the sample.</p></div>
 
 <h2 id="dataset"><span class="sec-no">07</span>Assembling the table &mdash; <code>dataset.py</code></h2>
 
@@ -659,13 +647,13 @@ if "log_return" in merged.columns:
     merged["lag_log_return_1"] = merged["log_return"].shift(1)</pre>
 
 <div class="box def"><span class="k">What it does</span>
-<p><b>Input:</b> the term-structure frame and the realized-variance frame for one asset,
-plus a lag depth.
-<b>Output:</b> one tidy table per asset, with the target in
+<p><b>Input:</b> the term-structure and realized-variance frames for one asset, plus a lag
+depth.
+<b>Output:</b> one table per asset, with the target in
 <code>target_forward_rv_annualized</code>.
-<b>Role:</b> the single table both models consume.
-An inner join means only dates present in both frames survive, and a final
-<code>dropna()</code> removes the rows with no lag and the rows with no target.</p></div>
+<b>Role:</b> the table consumed by both models.
+The inner join keeps dates present in both frames. The final <code>dropna()</code> removes
+rows without a lag or target.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; the modelling table for ES</span>
 <div class="io stack">
@@ -683,19 +671,17 @@ lag_log_return_1               -0.007081
 asset                                 ES
 target_forward_rv_annualized    0.000128</pre></div>
 </div>
-<p>The eight columns actually fed to the ridge model are
-<code>lag_log_return_1</code>, <code>lag_rv_1</code>, the three regime dummies,
-<code>roll_yield</code>, <code>slope</code> and <code>spread</code>. Note what is
-<i>not</i> there: <code>known_trailing_rv_annualized</code> is excluded from the feature
-set, so the ridge model does not get to use the benchmark's own input.</p></div>
+<p>The ridge model uses eight columns: <code>lag_log_return_1</code>, <code>lag_rv_1</code>,
+the three regime dummies, <code>roll_yield</code>, <code>slope</code>, and
+<code>spread</code>. It does not use <code>known_trailing_rv_annualized</code>, the
+benchmark's input.</p></div>
 
 <div class="box why"><span class="k">Why one-hot columns instead of a text label</span>
 <p><code>pd.get_dummies</code> turns the regime label into three 0/1 columns because a
-linear model cannot consume the string "contango". Because each asset only sees the
-regimes it actually visits, ES ends up with one dummy column and CL with three. The
-pipeline's <code>_align_asset_datasets</code> fixes that by taking the union of columns
-across assets and filling the absent ones with 0, so every asset ends up with the same
-design matrix.</p></div>
+linear model cannot use the string "contango" directly. Each asset may visit a different
+set of regimes, so ES has one dummy column and CL has three. The pipeline's
+<code>_align_asset_datasets</code> takes the union of those columns and fills missing ones
+with 0. Every asset then has the same design matrix.</p></div>
 
 <h2 id="models"><span class="sec-no">08</span>The two models &mdash; <code>baselines.py</code>, <code>train.py</code></h2>
 
@@ -707,14 +693,13 @@ design matrix.</p></div>
     return prediction</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Forecast that the next two days will be as volatile as the last two days were. That is
-the whole model. Any real model has to beat it.</p></div>
+<p>Forecast that the next two days will be as volatile as the last two days. Any other
+model should beat this benchmark.</p></div>
 
 <div class="box why"><span class="k">Why a two-line function earns its own module</span>
-<p>Because the honest version of it is easy to get wrong. The tempting shortcut is to
-shift the target series back and call it persistence, but that answer is not available at
-forecast time. This version takes $K_t$, which sums returns up to and including day $t$
-and nothing beyond, so a trader could genuinely have produced it.</p></div>
+<p>The obvious implementation is easy to get wrong. Shifting the target backward uses an
+answer that was not available at forecast time. This version uses $K_t$, which sums
+returns through day $t$ and nothing later, so it could have been calculated then.</p></div>
 
 <h3>Ridge regression</h3>
 
@@ -729,35 +714,35 @@ and nothing beyond, so a trader could genuinely have produced it.</p></div>
     return np.linalg.solve(left_hand_side, right_hand_side)</pre>
 
 <div class="box def"><span class="k">The formula</span>
-<p>Ordinary least squares minimises the sum of squared errors. Ridge adds a penalty on the
-size of the coefficients:</p>
+<p>Ordinary least squares minimises the sum of squared errors. Ridge regression adds a
+penalty for large coefficients:</p>
 <p>$$\hat\beta=\arg\min_{\beta}\;\lVert y-X\beta\rVert^2+\alpha\lVert\beta_{1:}\rVert^2$$</p>
-<p>Setting the derivative with respect to $\beta$ to zero gives the closed form the code
-solves:</p>
+<p>Setting the derivative with respect to $\beta$ to zero gives the equation solved by the
+code:</p>
 <p>$$\left(X^{\top}X+\alpha I_0\right)\hat\beta=X^{\top}y$$</p>
-<p class="fnote">$y$ is the target vector, one entry per training row. $X$ is the design
-matrix: a column of ones followed by the standardized features. $\alpha$ is
+<p class="fnote">$y$ is the target vector, with one entry per training row. $X$ is the
+design matrix: a column of ones followed by the standardized features. $\alpha$ is
 <code>ridge_alpha</code>, here 1.0. $I_0$ is the identity matrix with its top-left entry
-set to zero, so the intercept escapes the penalty. $\beta_{1:}$ means all coefficients
-except the intercept. Features are standardized first, using</p>
+set to zero, so the intercept is not penalized. $\beta_{1:}$ means all coefficients except
+the intercept. The code standardizes features first:</p>
 <p>$$z_j=\frac{x_j-\mu_j}{\sigma_j}$$</p>
-<p>where $\mu_j$ and $\sigma_j$ are the mean and population standard deviation of feature
-$j$ <i>in the training rows only</i>. A feature with zero spread has its $\sigma_j$
-replaced by 1 so the division stays finite.</p></div>
+<p>Here, $\mu_j$ and $\sigma_j$ are the mean and population standard deviation of feature
+$j$ <i>in the training rows only</i>. If a feature has zero spread, its $\sigma_j$ is
+replaced by 1 so the division remains finite.</p></div>
 
 <div class="box why"><span class="k">Why standardize before penalizing</span>
-<p>The penalty $\alpha\lVert\beta\rVert^2$ treats every coefficient the same. Without
-standardization that is arbitrary: <code>spread</code> is measured in index points
-around 59, while <code>lag_rv_1</code> is around $5\times10^{-5}$. The raw coefficient on
-<code>lag_rv_1</code> would have to be enormous to matter, and the penalty would crush it
-purely because of the unit it is measured in. Standardizing puts all features on the same
-scale so the penalty is a statement about importance rather than about units.</p></div>
+<p>The penalty $\alpha\lVert\beta\rVert^2$ treats every coefficient equally. Without
+standardization, that depends on the units: <code>spread</code> is around 59 index points,
+while <code>lag_rv_1</code> is around $5\times10^{-5}$. Its raw coefficient would need to
+be very large to matter, and the penalty would shrink it because of its units.
+Standardization puts features on one scale, so the penalty reflects size rather than
+measurement units.</p></div>
 
 <div class="box why"><span class="k">Why the intercept is not penalized</span>
-<p>Shrinking the intercept toward zero would pull predictions toward zero variance, which
-is not a neutral prior &mdash; variance is strictly positive and typically around 0.02
-annualized here. Leaving the intercept free lets it absorb the average level of the target
-so the penalty only shrinks the part of the model that responds to features.</p></div>
+<p>Shrinking the intercept toward zero would pull predictions toward zero variance. That is
+not neutral: variance is positive and is typically around 0.02 annualized here. Leaving
+the intercept free lets it capture the target's average level while the penalty shrinks
+only the feature effects.</p></div>
 
 <h2 id="eval"><span class="sec-no">09</span>Scoring out of sample &mdash; <code>walk_forward.py</code>, <code>metrics.py</code></h2>
 
@@ -771,9 +756,9 @@ so the penalty only shrinks the part of the model that responds to features.</p>
     test_start = test_start + step_size</pre>
 
 <div class="box gist"><span class="k">In plain words</span>
-<p>Train on the early rows, predict the next twenty, slide forward twenty rows, repeat.
-Crucially, throw away the last few training rows, because their answers had not happened
-yet at the moment the forecast is made.</p></div>
+<p>Train on the early rows, predict the next twenty, move forward twenty rows, and repeat.
+Drop the last few training rows because their answers were not known when the forecast was
+made.</p></div>
 
 <div class="box def"><span class="k">The formula</span>
 <p>A training label dated $s$ is the sum of squared returns on days $s+1$ through $s+H$,
@@ -783,9 +768,8 @@ a training label is usable only when</p>
 <p>so the last usable training row is $T-H$, and</p>
 <p>$$\text{purged rows}=(T-1)-(T-H)=H-1$$</p>
 <p class="fnote">$s$ is the row position of a training observation, $T$ the row position
-of the first test observation, $H$ the forecast horizon in rows. With $H=2$ exactly one
-row is discarded per fold. If $H$ were 21 for a monthly horizon, 20 rows would go, and the
-protection would matter a great deal more.</p></div>
+of the first test observation, and $H$ the forecast horizon in rows. With $H=2$, one row
+is discarded per fold. If $H$ were 21 for a monthly horizon, 20 rows would be discarded.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; the folds for ES</span>
 <div class="io">
@@ -800,17 +784,16 @@ train_start=0  train_end=278  test_start=280  test_end=299
 row 79 is never trained on in fold 1: its label
 needs day 81, which has not happened at row 80</pre></div>
 </div>
-<p>Training always starts at row 0, so the window expands rather than sliding. Eleven
-folds times twenty test rows gives 220 predictions per model per asset, and
+<p>Training always starts at row 0, so the window expands rather than slides. Eleven folds
+with twenty test rows give 220 predictions per model per asset. Thus
 220 x 3 assets x 2 models = 1320 rows in <code>predictions.parquet</code>.</p></div>
 
 <div class="box why"><span class="k">Why standardization is recomputed on each fold's training rows</span>
 <p><code>_ridge_test_predictions</code> fits the mean and standard deviation on the
-training slice alone, then applies those same numbers to the test slice. If it had
-standardized the full dataset once up front, the training rows would carry information
-about the mean and spread of future data, and the out-of-sample score would be
-optimistic. The cost is that the same standardizer is computed twice, once inside
-<code>fit_ridge_regression</code> and once outside it, which is wasteful but not wrong.</p></div>
+training slice, then applies them to the test slice. Standardizing the full dataset first
+would leak information about future data into the training rows and make the out-of-sample
+score too optimistic. The same standardizer is computed twice, once inside
+<code>fit_ridge_regression</code> and once outside it. That is wasteful but correct.</p></div>
 
 <div class="box def"><span class="k">The four metrics</span>
 <p>With $y_i$ the observed forward variance and $\hat y_i$ the prediction over $n$ test
@@ -820,15 +803,14 @@ rows:</p>
 \text{MAE}=\frac{1}{n}\sum_i\lvert y_i-\hat y_i\rvert$$</p>
 <p>$$R^2=1-\frac{\sum_i(y_i-\hat y_i)^2}{\sum_i(y_i-\bar y)^2}$$</p>
 <p class="fnote">$\bar y$ is the mean of the observed values <i>within that test window</i>.
-$R^2$ is negative whenever the model does worse than simply predicting that window's own
-average &mdash; and because that average is not knowable in advance, a negative $R^2$
-here is a weaker indictment than it looks. It is still a fair comparison between the two
-models, since both are scored the same way.</p></div>
+$R^2$ is negative when the model does worse than predicting that window's average. That
+average is not known in advance, so a negative $R^2$ is less severe here than it may seem.
+It remains a fair comparison because both models use the same score.</p></div>
 
 <h2 id="pipeline"><span class="sec-no">10</span>The orchestrator &mdash; <code>run_research_pipeline.py</code></h2>
 
-<p>658 lines, but the shape is simple: build a table per asset, align the tables, evaluate
-two models per asset, aggregate, write files.</p>
+<p>The file has 658 lines, but its job is simple: build and align one table per asset,
+evaluate two models per asset, aggregate the results, and write the files.</p>
 
 <div class="scroll">
 <table>
@@ -849,22 +831,22 @@ two models per asset, aggregate, write files.</p>
 </div>
 
 <div class="box why"><span class="k">Why evaluation is per asset rather than pooled</span>
-<p>The pooled table has three rows per date, one per asset. Walk-forward splitting works on
-row positions, so a pooled split would cut through the middle of a date and mix assets
-across the train and test boundary. Running each asset separately keeps row position and
-calendar date in one-to-one correspondence. The pooled numbers in <code>metrics.csv</code>
-are then simply averages of per-asset fold metrics, not a separate pooled fit.</p></div>
+<p>The pooled table has three rows per date, one per asset. Walk-forward splitting uses row
+positions, so a pooled split could cut through a date and put different assets on opposite
+sides of the train-test boundary. Running each asset separately keeps row position aligned
+with calendar date. The pooled numbers in <code>metrics.csv</code> are averages of
+per-asset fold metrics, not results from a pooled fit.</p></div>
 
 <div class="box warn"><span class="k">Trap: the coefficient file is in-sample</span>
-<p><code>feature_importance.csv</code> comes from <code>full_fit</code>, a single ridge fit
-on <i>all</i> rows of <i>all</i> assets with no holdout. It is a description of which
-features the model leans on, not evidence that they work. The out-of-sample evidence is in
-<code>metrics.csv</code>, and it is not flattering.</p></div>
+<p><code>feature_importance.csv</code> comes from <code>full_fit</code>, one ridge fit on
+<i>all</i> rows for <i>all</i> assets, with no holdout. It shows which features the model
+uses; it does not show that they work. The out-of-sample evidence is in
+<code>metrics.csv</code>, and it is weak.</p></div>
 
 <h2 id="results"><span class="sec-no">11</span>What one run actually produces</h2>
 
-<p>Run: <code>uv run futures-roll-research</code>. All numbers below are from an actual
-run of the fixed code on <code>data/raw</code>.</p>
+<p>Run <code>uv run futures-roll-research</code>. The numbers below come from the fixed
+code running on <code>data/raw</code>.</p>
 
 <div class="box data"><span class="k">Sample data &mdash; metrics.csv</span>
 <div class="io stack">
@@ -879,12 +861,12 @@ ridge        0.005135  0.063907  0.049179   -0.446824  asset   CL
 persistence  0.001690  0.035450  0.025169   -1.490308  asset   GC
 ridge        0.000865  0.025986  0.018622   -0.620655  asset   GC</pre></div>
 </div>
-<p>Read this carefully. On squared error the ridge model beats persistence everywhere:
-pooled MSE 0.0022 against 0.0040. But every $R^2$ is negative, meaning neither model beats
-the within-window average, and ES ridge has a worse average $R^2$ than persistence despite
-a lower average MSE. That contradiction is genuine: the averages are taken across eleven
-folds, and one bad fold with a small denominator dominates the $R^2$ average while barely
-moving the MSE average. Per-fold ES ridge $R^2$ runs from $+0.14$ to $-32.1$.</p></div>
+<p>Ridge has lower squared error than persistence in every case: pooled MSE 0.0022 versus
+0.0040. But every $R^2$ is negative, so neither model beats the test-window average. ES
+ridge has a worse average $R^2$ than persistence despite its lower average MSE. The reason
+is that the averages cover eleven folds: one bad fold with a small denominator can dominate
+the $R^2$ average while barely changing the MSE average. ES ridge's per-fold $R^2$ ranges
+from $+0.14$ to $-32.1$.</p></div>
 
 <div class="box data"><span class="k">Sample data &mdash; feature_importance.csv</span>
 <div class="io">
@@ -910,8 +892,7 @@ consistent with the usual story that
 stressed markets are both backwardated
 and volatile</pre></div>
 </div>
-<p>Because features are standardized, the coefficients are directly comparable to each
-other. Do not read them as causal.</p></div>
+<p>Standardization makes the coefficients directly comparable. They do not show causation.</p></div>
 
 <div class="scroll">
 <table>
@@ -930,8 +911,8 @@ other. Do not read them as causal.</p></div>
 
 <h2 id="fixes"><span class="sec-no">12</span>Fixes applied</h2>
 
-<p>Four defects were found while reading the code and were fixed. All 16 tests still pass
-and <code>ruff check src tests</code> is clean.</p>
+<p>Four defects were found and fixed. All 16 tests pass, and <code>ruff check src tests</code>
+is clean.</p>
 
 <div class="scroll">
 <table>
@@ -966,19 +947,17 @@ and <code>ruff check src tests</code> is clean.</p>
 </div>
 
 <div class="box flag"><span class="k">What this means for the existing artifacts</span>
-<p>Everything under <code>outputs/runs/</code> and the numbers in <code>blog/</code> were
-produced before these fixes and are now stale. They were left untouched, because
-regenerating them is a separate decision. Re-running
-<code>uv run futures-roll-research</code> produces the corrected figures shown in
-section 11.</p></div>
+<p>Everything under <code>outputs/runs/</code>, along with the numbers in <code>blog/</code>,
+predates these fixes and is stale. Those files were left untouched. Re-running
+<code>uv run futures-roll-research</code> produces the corrected figures shown in section
+11.</p></div>
 
 <div class="box def"><span class="k">Considered and deliberately not changed</span>
-<p>Several things look odd but are defensible design choices rather than defects, so they
-were left alone: evaluating each asset separately instead of pooling; excluding
-<code>known_trailing_rv_annualized</code> from the ridge feature set; returning
-$R^2=0$ when the observed values in a test window are all identical; the expanding rather
-than rolling training window; and the hard-coded 365 in the roll-yield annualization,
-which is correct because the gap is measured in calendar days.</p></div>
+<p>Several unusual choices are deliberate rather than defects: evaluating each asset
+separately; excluding <code>known_trailing_rv_annualized</code> from the ridge features;
+returning $R^2=0$ when all observed test values are identical; using an expanding rather
+than rolling training window; and using the fixed 365 for roll-yield annualization because
+the gap is measured in calendar days.</p></div>
 
 <h2 id="callgraph"><span class="sec-no">13</span>Call graph</h2>
 
@@ -1033,18 +1012,18 @@ which is correct because the gap is measured in calendar days.</p></div>
 <table>
 <thead><tr><th>Situation</th><th>What would go wrong</th><th>What handles it</th></tr></thead>
 <tbody>
-<tr><td>A Parquet file is missing or has lost a column</td><td>Silent empty frame, then a model fitted on nothing</td><td><code>_read_parquet_with_columns</code> raises <code>FileNotFoundError</code> or <code>ValueError</code> naming the missing columns</td></tr>
-<tr><td>The roll calendar names a contract with no price bar that day</td><td>A row of <code>NaN</code> prices in the stitched series</td><td><code>_calendar_roll</code> drops rows with a missing close before anything else</td></tr>
-<tr><td>The very first row of the price series is a roll date</td><td>There is no previous row to compute a factor from</td><td><code>_apply_roll_adjustment</code> skips when <code>current_index == 0</code></td></tr>
+<tr><td>A Parquet file is missing or has lost a column</td><td>An empty frame, then a model fitted on nothing</td><td><code>_read_parquet_with_columns</code> raises <code>FileNotFoundError</code> or <code>ValueError</code> and names the missing columns</td></tr>
+<tr><td>The roll calendar names a contract with no price bar that day</td><td>A row of <code>NaN</code> (not-a-number) prices in the stitched series</td><td><code>_calendar_roll</code> drops rows with a missing close first</td></tr>
+<tr><td>The first row of the price series is a roll date</td><td>No previous row exists for calculating a factor</td><td><code>_apply_roll_adjustment</code> skips when <code>current_index == 0</code></td></tr>
 <tr><td>The outgoing contract's close is zero</td><td>Division by zero in the ratio factor</td><td>The ratio branch skips that roll</td></tr>
-<tr><td>Fewer than two contracts quoted on a date</td><td>No spread, no roll yield</td><td><code>compute_term_structure_features</code> skips the date entirely</td></tr>
-<tr><td>Two contracts have identical end dates</td><td>Division by zero in the roll-yield annualization</td><td><code>_maturity_gap_days</code> floors the gap at 1 day</td></tr>
-<tr><td>The last $H$ dates have no forward return</td><td>A short, wrong target at the end of the sample</td><td><code>min_count=horizon_days</code> forces <code>NaN</code>, then <code>dropna()</code> removes those rows</td></tr>
-<tr><td>An asset never enters backwardation</td><td>Its one-hot columns differ from the others and the pooled design matrix breaks</td><td><code>_align_asset_datasets</code> unions the columns and fills the gaps with 0</td></tr>
-<tr><td>A training feature has zero spread within one fold</td><td>Division by zero when standardizing</td><td><code>fit_feature_standardizer</code> replaces a standard deviation of exactly 0 with 1</td></tr>
+<tr><td>Fewer than two contracts are quoted on a date</td><td>No spread or roll yield</td><td><code>compute_term_structure_features</code> skips the date</td></tr>
+<tr><td>Two contracts have identical end dates</td><td>Division by zero in annualized roll yield</td><td><code>_maturity_gap_days</code> sets the gap to at least 1 day</td></tr>
+<tr><td>The last $H$ dates have no forward return</td><td>A short, incorrect target at the sample end</td><td><code>min_count=horizon_days</code> forces <code>NaN</code>, then <code>dropna()</code> removes those rows</td></tr>
+<tr><td>An asset never enters backwardation</td><td>Its one-hot columns differ and the pooled design matrix breaks</td><td><code>_align_asset_datasets</code> takes the union of columns and fills gaps with 0</td></tr>
+<tr><td>A training feature has zero spread within one fold</td><td>Division by zero during standardization</td><td><code>fit_feature_standardizer</code> replaces a standard deviation of exactly 0 with 1</td></tr>
 <tr><td>The horizon is longer than the nominal training window</td><td>An empty training set after the purge</td><td><code>generate_walk_forward_splits</code> raises <code>"label_horizon_days cannot exceed train_size"</code></td></tr>
-<tr><td>An asset has too few rows to evaluate</td><td>Zero folds and meaningless metrics</td><td><code>min_asset_rows</code> drops it; if nothing survives the pipeline raises with a suggestion of what to change</td></tr>
-<tr><td>Two runs on the same day</td><td>The second overwrites the first</td><td><code>_next_run_id</code> increments the sequence number</td></tr>
+<tr><td>An asset has too few rows to evaluate</td><td>Zero folds and meaningless metrics</td><td><code>min_asset_rows</code> drops it; if none remain, the pipeline raises and suggests what to change</td></tr>
+<tr><td>Two runs occur on the same day</td><td>The second overwrites the first</td><td><code>_next_run_id</code> increments the sequence number</td></tr>
 </tbody>
 </table>
 </div>
@@ -1055,16 +1034,16 @@ which is correct because the gap is measured in calendar days.</p></div>
 <table>
 <thead><tr><th>Idiom in the code</th><th>What it does</th><th>The trap it avoids, or creates</th></tr></thead>
 <tbody>
-<tr><td><code>shift(-1) ... shift(-H)</code></td><td>Builds the forward sum from explicit leads</td><td>Avoids: <code>rolling(H).sum().shift(-H)</code> would include day $t$'s own return, which is already known at forecast time</td></tr>
-<tr><td><code>min_count=horizon_days</code></td><td>Refuses to sum a partly-missing window</td><td>Avoids a short target silently appearing at the end of the sample</td></tr>
-<tr><td><code>train_end = test_start - H</code></td><td>Purges training labels that had not resolved yet</td><td>Avoids training on answers the forecaster could not have seen</td></tr>
-<tr><td><code>adjusted.loc[: i-1, PRICE_COLUMNS]</code></td><td>Scales every row up to and including <code>i-1</code></td><td>Creates a trap: <code>.loc</code> slicing is label-based and <b>inclusive</b> of the endpoint, unlike <code>.iloc</code>. It is correct here only because <code>reset_index(drop=True)</code> makes labels equal positions</td></tr>
-<tr><td><code>sorted(roll_dates, reverse=True)</code></td><td>Adjusts newest roll first</td><td>Avoids: going oldest-first would leave later segments unadjusted relative to earlier ones</td></tr>
-<tr><td><code>std(ddof=0).replace(0.0, 1.0)</code></td><td>Guards against dividing by zero</td><td>Creates a trap: it only catches <i>exactly</i> zero. A feature that is constant except for one row has a tiny non-zero spread, and standardizing a test row against it produces an enormous z-score</td></tr>
-<tr><td><code>pd.get_dummies</code> on the full sample</td><td>Turns the regime label into 0/1 columns</td><td>Creates a mild trap: which categories exist is decided using the whole sample, so a fold implicitly knows a regime it has not yet seen. The effect is small, but it is not strictly out of sample</td></tr>
-<tr><td><code>identity[0, 0] = 0.0</code></td><td>Exempts the intercept from the ridge penalty</td><td>Avoids shrinking predictions toward zero variance</td></tr>
-<tr><td><code>all_predictions</code> holds both models</td><td>Persistence and ridge rows share the same date index</td><td>Creates a trap: <code>prediction_diagnostics.png</code> plots both models on one scatter without distinguishing them. Filter on the <code>model</code> column before reading it</td></tr>
-<tr><td><code>_feature_columns</code> excludes target-derived columns</td><td>Keeps <code>forward_realized_variance</code> and <code>known_trailing_rv_annualized</code> out of the model</td><td>Avoids feeding the model the answer; but note the exclusion list is a hard-coded set, so a new target-derived column would have to be added there by hand or it would leak</td></tr>
+<tr><td><code>shift(-1) ... shift(-H)</code></td><td>Builds the forward sum from explicit leads</td><td>Avoids: <code>rolling(H).sum().shift(-H)</code> would include day $t$'s return, already known at forecast time</td></tr>
+<tr><td><code>min_count=horizon_days</code></td><td>Rejects a partly missing window</td><td>Prevents a short target from appearing silently at the sample end</td></tr>
+<tr><td><code>train_end = test_start - H</code></td><td>Removes training labels that were not resolved</td><td>Prevents training on answers the forecaster could not have seen</td></tr>
+<tr><td><code>adjusted.loc[: i-1, PRICE_COLUMNS]</code></td><td>Scales every row through <code>i-1</code></td><td>Trap: <code>.loc</code> slices by label and includes the endpoint, unlike <code>.iloc</code>. It works here because <code>reset_index(drop=True)</code> makes labels equal positions</td></tr>
+<tr><td><code>sorted(roll_dates, reverse=True)</code></td><td>Adjusts the newest roll first</td><td>Prevents later segments from remaining unadjusted relative to earlier ones</td></tr>
+<tr><td><code>std(ddof=0).replace(0.0, 1.0)</code></td><td>Prevents division by zero</td><td>Trap: it catches only <i>exactly</i> zero. A nearly constant feature can still produce an enormous test z-score</td></tr>
+<tr><td><code>pd.get_dummies</code> on the full sample</td><td>Turns the regime label into 0/1 columns</td><td>Trap: categories come from the full sample, so a fold can know about a regime it has not seen. The effect is small, but this is not strictly out of sample</td></tr>
+<tr><td><code>identity[0, 0] = 0.0</code></td><td>Leaves the intercept out of the ridge penalty</td><td>Prevents predictions from being pulled toward zero variance</td></tr>
+<tr><td><code>all_predictions</code> holds both models</td><td>Persistence and ridge rows share date indexes</td><td>Trap: <code>prediction_diagnostics.png</code> plots both models together. Filter on <code>model</code> before reading it</td></tr>
+<tr><td><code>_feature_columns</code> excludes target-derived columns</td><td>Keeps <code>forward_realized_variance</code> and <code>known_trailing_rv_annualized</code> out of the model</td><td>Prevents using the answer. The exclusion list is hard-coded, so a new target-derived column must be added by hand or it could leak</td></tr>
 </tbody>
 </table>
 </div>
@@ -1072,44 +1051,44 @@ which is correct because the gap is measured in calendar days.</p></div>
 <h2 id="limits"><span class="sec-no">16</span>Limitations, stated honestly</h2>
 
 <div class="box flag"><span class="k">Both models lose to the test window's own average</span>
-<p>Every $R^2$ in <code>metrics.csv</code> is negative. Ridge does beat persistence on
-squared error, which is the comparison the project set out to make, but neither model is
-useful in an absolute sense on this sample.</p></div>
+<p>Every $R^2$ in <code>metrics.csv</code> is negative. Ridge beats persistence on squared
+error, the comparison this project set out to make, but neither model performs well against
+the test-window average on this sample.</p></div>
 
 <div class="box flag"><span class="k">The sample is one calendar year and three assets</span>
-<p>308 rows per asset, 11 folds, 220 out-of-sample predictions per model per asset. Any
-metric computed on that is dominated by a handful of volatile days. A two-day horizon on
-one year of data cannot separate a real effect from luck.</p></div>
+<p>There are 308 rows per asset, 11 folds, and 220 out-of-sample predictions per model per
+asset. A few volatile days can dominate any metric from this sample. One year of data at a
+two-day horizon cannot separate a real effect from luck.</p></div>
 
 <div class="box flag"><span class="k">Term-structure features jump at every contract roll</span>
-<p><code>spread</code> is a raw price difference between two specific contracts. When the
-front pair changes, its level shifts. The ridge model standardizes on pre-roll training
-rows and then extrapolates through that shift. That is why one ES fold still scores
-$R^2=-32$ even after the timing fix. A more careful version would either roll-adjust the
-term-structure features too, or express the spread as a percentage of the front price.</p></div>
+<p><code>spread</code> is the raw price difference between two contracts. Its level changes
+when the front pair changes. The ridge model standardizes on pre-roll training rows and
+then extrapolates across that change. One ES fold still scores $R^2=-32$ after the timing
+fix. A stronger design would also adjust the term-structure features or express the spread
+as a percentage of the front price.</p></div>
 
 <div class="box flag"><span class="k">The slope feature is built on nearly untraded prices</span>
-<p>On 2 January 2024 the third ES contract traded 3 lots against the front contract's 1.5
-million. Its close is a stale quote, so the third point of the curve carries little
-information and a lot of noise. <code>num_contracts = 3</code> was chosen to make the
-slope estimable, not because the third point is reliable.</p></div>
+<p>On 2 January 2024 the third ES contract traded 3 lots, versus 1.5 million for the front
+contract. Its close is stale, so that third curve point carries little information and much
+noise. <code>num_contracts = 3</code> makes the slope estimable; it does not make the third
+point reliable.</p></div>
 
 <div class="box flag"><span class="k">The stitched series and the term-structure features can disagree about the front contract</span>
 <p>The roll calendar switched ES to M24 on 14 March, but the contract-level panel still
-had H24 bars until 15 March, so the term-structure code kept treating H24 as the front
-contract for two more days. It is a one- or two-day mismatch, but it means the price
-series and the curve features are not always describing the same contract.</p></div>
+had H24 bars until 15 March. The term-structure code therefore treated H24 as the front
+contract for two more days. The mismatch is small, but the price series and curve features
+do not always describe the same contract.</p></div>
 
 <div class="box flag"><span class="k">The environment in the repository is broken</span>
-<p><code>.venv</code> cannot import NumPy: it fails with "Something is wrong with the numpy
-installation", and <code>uv sync</code> reports nothing to do. Every number on this page
-was produced by running the package with <code>PYTHONPATH=src</code> in a clean throwaway
-environment on Python 3.13 with NumPy, pandas, PyArrow and Matplotlib. Deleting
-<code>.venv</code> and re-running <code>uv sync --all-groups</code> should rebuild it.</p></div>
+<p><code>.venv</code> cannot import NumPy: it reports "Something is wrong with the numpy
+installation", while <code>uv sync</code> reports nothing to do. Every number on this page
+came from a clean temporary environment running Python 3.13 with NumPy, pandas, PyArrow,
+and Matplotlib, using <code>PYTHONPATH=src</code>. Deleting <code>.venv</code> and running
+<code>uv sync --all-groups</code> should rebuild it.</p></div>
 
-<p class="foot">Written against the repository state on 10 August 2026. Sample values were
-taken from a live run over <code>data/raw</code>; if the code changes, re-run
-<code>uv run futures-roll-research</code> and update the boxes rather than trusting them.</p>
+<p class="foot">Based on the repository state on 10 August 2026. Sample values came from a
+run over <code>data/raw</code>. If the code changes, run
+<code>uv run futures-roll-research</code> again and update the boxes.</p>
 
 </div>
 </body>
