@@ -6,23 +6,23 @@ image: images/cover-futures-roll.png
 categories: ["Quantitative Research", "Futures", "Risk Management"]
 ---
 
-# Auditer une prévision de variance sur futures : quand un décalage change l'expérience
+# Auditer une prévision de variance sur futures quand un décalage change l'expérience
 
-La question de départ semblait raisonnable : la forme de la courbe des futures aide-t-elle à prévoir la variance des deux prochaines séances ? Le projet réunissait les bons éléments : contrats continus, variables de structure par terme, benchmark de persistance, régression ridge et tests walk-forward sur l'E-mini S&P 500 (ES), le pétrole brut (CL) et l'or (GC).
+La question de départ semblait raisonnable. La forme de la courbe des futures aide-t-elle à prévoir la variance des deux prochaines séances ? Le projet réunissait des contrats continus, des variables de structure par terme, un benchmark de persistance, une régression ridge et des tests walk-forward sur l'E-mini S&P 500, soit ES, le pétrole brut, soit CL, et l'or, soit GC.
 
 J'ai ensuite suivi la cible ligne par ligne.
 
 Cet audit a révélé trois problèmes de calendrier. La cible de variance future était décalée d'une séance, le benchmark de persistance utilisait une cible avant qu'elle ne soit observable, et la dernière cible d'entraînement de chaque fold débordait sur la période de test. J'ai corrigé les trois dans le pipeline de production et ajouté de petits tests, calculés à la main, pour verrouiller l'horloge de prévision.
 
-J'ai conservé le reste du pipeline et relancé la comparaison hors échantillon depuis les contrats bruts. Le résultat négatif est justement ce qui mérite d'être retenu : une fois le calendrier réparé, aucun des deux modèles n'explique la variance future de façon fiable.
+J'ai conservé le reste du pipeline et relancé la comparaison hors échantillon depuis les contrats bruts. Le résultat négatif compte. Une fois le calendrier réparé, aucun des deux modèles n'explique la variance future de façon fiable.
 
 ## Une série de futures a des coutures
 
-Un contrat future expire. Une année de prix du « pétrole brut » est donc une succession de contrats individuels, et non l'historique continu d'un titre permanent. Leur raccordement produit une **série continue de futures** : un historique synthétique qui choisit un contrat actif à chaque date et ajuste les observations anciennes lors du changement de contrat.
+Un contrat future expire. Une année de prix du "pétrole brut" est donc une succession de contrats individuels, et non l'historique continu d'un titre permanent. Leur raccordement produit une **série continue de futures**, un historique synthétique qui choisit un contrat actif à chaque date et ajuste les observations anciennes lors du changement de contrat.
 
 Par défaut, le projet suit un calendrier de roll explicite. À la date de roll, il quitte l'ancien contrat front pour le nouveau. Avec l'ajustement par ratio, il divise le nouveau cours de clôture par le précédent, puis multiplie tous les prix open, high, low et close antérieurs par ce facteur. Le calcul remonte depuis le roll le plus récent. Il préserve ainsi les rendements proportionnels au sein de chaque segment historique tout en effaçant la rupture de niveau au raccord.
 
-La série ajustée ne sert ici qu'au calcul des rendements quotidiens. Les variables de structure par terme proviennent toujours des prix bruts simultanés des contrats. Cette séparation est essentielle : un niveau rétroajusté convient à un historique de rendements, mais il ne décrit pas la courbe cotée ce jour-là.
+J'utilise la série ajustée uniquement pour calculer les rendements quotidiens. Les variables de structure par terme proviennent toujours des prix bruts simultanés des contrats. Un niveau rétroajusté convient à un historique de rendements, mais il ne décrit pas la courbe cotée ce jour-là.
 
 Le code conserve aussi les prix non ajustés, l'identité du contrat actif et les dates de roll. Ce ne sont pas des sorties accessoires. Sans elles, il devient presque impossible d'expliquer un rendement suspect près d'une échéance.
 
@@ -137,11 +137,11 @@ Une valeur négative signifie que le modèle fait moins bien que la moyenne cons
 
 Le nuage de points montre le problème de fond. Les deux méthodes ratent les plus fortes observations de variance réalisée. La persistance prolonge parfois un pic récent alors que les deux séances suivantes sont calmes. Ridge concentre la plupart de ses prévisions dans une bande étroite et produit même des variances négatives pour ES. Une régression linéaire sans contrainte autorise ce résultat, mais une variance inférieure à zéro n'a aucun sens.
 
-## Ce que l'expérience permet de conclure
+## Où s'arrêtent les résultats
 
 Les résultats corrigés ne permettent pas d'affirmer que ces variables de structure par terme prévoient correctement la variance à deux séances dans cet échantillon. Le léger avantage moyen de ridge vient de CL et GC, disparaît sur ES et s'accompagne partout d'un $R^2$ négatif. Il serait beaucoup trop tôt pour bâtir un overlay de trading sur cette base.
 
-L'expérience reste instructive. Une étude sur futures doit gérer deux horloges : celle des données de marché et celle où la cible devient observable. Trier les dates avant de créer les splits ne suffit pas à éliminer le lookahead bias. Une cible future exige une purge adaptée à son horizon, et un benchmark doit être calculable avec l'information réellement disponible à l'origine de la prévision.
+L'audit a fait ressortir une règle que je considère désormais comme non négociable en recherche sur futures. Il faut suivre l'horloge des données de marché et celle où la cible devient observable. Trier les dates avant de créer les splits ne suffit pas à éliminer le lookahead bias. Une cible future exige une purge adaptée à son horizon, et un benchmark doit être calculable avec l'information disponible à l'origine de la prévision.
 
 Les limites plus classiques demeurent. L'échantillon ne couvre qu'une année civile et trois marchés. Une cible à deux séances est très bruitée. La règle de roll et la méthode d'ajustement restent fixes. Ridge est un modèle linéaire non contraint, alors que la variance réalisée est positive et fortement asymétrique à droite. Une prochaine expérience plus solide prévoirait le logarithme de la variance, ajouterait un benchmark de variance exponentiellement pondérée, réglerait la pénalisation à l'intérieur de chaque fold d'entraînement et répéterait l'analyse sur plusieurs années et plusieurs horizons.
 

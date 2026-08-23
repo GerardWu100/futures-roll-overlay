@@ -6,27 +6,27 @@ image: images/cover-futures-roll.png
 categories: ["Quantitative Research", "Futures", "Risk Management"]
 ---
 
-# Auditing a Futures Variance Forecast: When One Shift Changes the Experiment
+# Auditing a futures variance forecast when one shift changes the experiment
 
-The original question looked modest: can the shape of a futures curve help forecast variance over the next two sessions? The project had the right broad pieces: continuous contracts, term-structure features, a persistence benchmark, ridge regression, and walk-forward tests across E-mini S&P 500 (ES), crude oil (CL), and gold (GC).
+The original question looked modest. Can the shape of a futures curve help forecast variance over the next two sessions? The project had continuous contracts, term-structure variables, a persistence benchmark, ridge regression, and walk-forward tests across E-mini S&P 500, or ES, crude oil, or CL, and gold, or GC.
 
 Then I traced the target one row at a time.
 
 That audit found three timing problems: the forward-variance label was shifted by one session, the persistence benchmark used a label before it could have been observed, and the last training label in each fold reached into the test period. I fixed all three in the production pipeline and added small, hand-calculated tests for the forecast clock.
 
-I kept the rest of the pipeline fixed and reran the out-of-sample comparison from raw contracts. The negative result is the useful part: after the timing repair, neither model explains future variance reliably.
+I kept the rest of the pipeline fixed and reran the out-of-sample comparison from raw contracts. The negative result matters. After the timing repair, neither model explains future variance reliably.
 
 ## Futures histories have seams
 
-A futures contract expires. A year of “crude oil” prices is therefore a sequence of individual contracts, not one security with an eternal ticker. Joining those contracts creates a **continuous futures series**: a synthetic history that selects one active contract on each date and adjusts older observations when the active contract changes.
+A futures contract expires. A year of "crude oil" prices is therefore a sequence of individual contracts, not one security with an eternal ticker. Joining those contracts creates a **continuous futures series**, a synthetic history that selects one active contract on each date and adjusts older observations when the active contract changes.
 
 This project uses an explicit roll calendar by default. On a roll date, it moves from the old front contract to the new one. Under ratio adjustment, it computes the new close divided by the previous close, then multiplies every earlier open, high, low, and close by that factor. Working backward from the newest roll preserves proportional returns within each historical segment while removing the visible level jump at the join.
 
-That adjusted series serves one purpose here: calculating daily returns. Term-structure features still come from simultaneous raw contract prices, which is the correct separation. A back-adjusted level is useful for a return history; it is not the market's curve on that date.
+I use that adjusted series only to calculate daily returns. Term-structure variables still come from simultaneous raw contract prices. A back-adjusted level works for a return history, but it is not the market's curve on that date.
 
 The implementation also keeps the unadjusted prices, active-contract identity, and roll dates. Those are not decorative outputs. Without them, a suspicious return near expiry is almost impossible to diagnose.
 
-## Turning the curve into features
+## Turning the curve into variables
 
 For each date, the feature builder orders contracts by expiry and keeps the nearest three. Define $F_{1,t}$ as the front-contract close on date $t$, $F_{2,t}$ as the second-contract close, and $d_t$ as the positive calendar-day gap between their configured contract end dates. The annualized roll yield $y_t$ is
 
@@ -137,11 +137,11 @@ A negative value means the model lost to the fold's constant mean forecast. Ever
 
 The scatter plot shows the deeper problem. Both methods miss the largest realized-variance observations. Persistence occasionally projects a recent spike forward when the next two sessions are calm. Ridge compresses most predictions toward a narrow band and even produces negative ES variance forecasts. That last behavior is legal for an unconstrained linear regression and nonsensical for a quantity that cannot fall below zero.
 
-## What the experiment establishes, and what it does not
+## Where the evidence stops
 
 The corrected evidence does not support the claim that these term-structure variables forecast two-session variance reliably in this sample. Ridge's small average RMSE edge comes from CL and GC, disappears for ES, and coexists with negative $R^2$ throughout. A trading overlay built on that result would be premature.
 
-The experiment is still useful. It demonstrates why futures research needs two clocks: the market-data timestamp and the time when a label becomes observable. Sorting dates before splitting does not, by itself, prevent lookahead. Forward labels require a horizon-aware purge, and a benchmark must be computable with information actually available at the forecast origin.
+The audit exposed a rule I now treat as non-negotiable in futures research. Track both the market-data timestamp and the time when a label becomes observable. Sorting dates before splitting does not prevent lookahead by itself. Forward labels require a horizon-aware purge, and a benchmark must be computable with information available at the forecast origin.
 
 There are also ordinary research limits. The sample covers one calendar year and three markets. The two-session target is noisy. The roll rule and adjustment choice are fixed rather than tested. Ridge is linear and unconstrained, while realized variance is non-negative and heavily right-skewed. A stronger next experiment would forecast log variance, compare against a trailing exponentially weighted variance benchmark, tune the penalty inside each training fold, and repeat the analysis over several years and multiple horizons.
 
