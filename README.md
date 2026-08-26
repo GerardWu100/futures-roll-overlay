@@ -108,7 +108,3 @@ metrics.csv                   pooled and per-asset regression metrics
 feature_importance.csv        ridge coefficients
 prediction_diagnostics.png    diagnostic plot
 ```
-
-## License
-
-All rights reserved. See [LICENSE](LICENSE).
